@@ -1,0 +1,28 @@
+# Arduino build artifacts
+build/
+*.elf
+*.bin
+*.map
+*.hex
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (if tooling added later)
+node_modules/
+npm-debug.log
+
+# Cloudflare
+.wrangler/

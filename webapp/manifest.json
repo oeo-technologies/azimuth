@@ -1,0 +1,33 @@
+{
+  "name": "Azimuth GPS Tracker",
+  "short_name": "Azimuth",
+  "description": "GPS tracker companion app for Azimuth devices",
+  "start_url": "./gps_tracker_responsive.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F5F2EE",
+  "theme_color": "#4A7C59",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["navigation", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Connect Device",
+      "short_name": "Connect",
+      "description": "Open and connect to Azimuth device",
+      "url": "./gps_tracker_responsive.html"
+    }
+  ]
+}

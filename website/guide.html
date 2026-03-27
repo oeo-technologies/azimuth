@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="theme-color" content="#3D6647">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>User Guide — Azimuth GPS Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,300;0,400;0,600;0,700;1,300&family=Barlow+Condensed:wght@500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --ink:#1C1A17;--ink2:#3D3A34;--muted:#6B6760;--hint:#9B9690;
+  --paper:#F4F1EB;--paper2:#EDE9E0;--paper3:#E4E0D6;
+  --border:#D4CFC4;--border2:#C4BFB4;
+  --green:#3D6647;--green2:#2E5038;--green3:#1A3828;
+  --green-bg:#EAF2EC;
+  --amber:#8B6A2E;--amber-bg:#F5EDD8;
+  --danger:#8B3A2E;--danger-bg:#F5E0DC;
+  --surface-nav:rgba(244,241,235,0.96);
+  --shadow-sm:0 1px 4px rgba(28,26,23,.07),0 1px 2px rgba(28,26,23,.05);
+  --shadow-md:0 4px 20px rgba(28,26,23,.10),0 2px 6px rgba(28,26,23,.07);
+  --shadow-lg:0 16px 48px rgba(28,26,23,.13),0 4px 14px rgba(28,26,23,.08);
+  --radius-sm:6px;--radius-md:10px;--radius-lg:16px;
+  --t:.18s ease;
+  --font:'Barlow',sans-serif;
+  --font-cond:'Barlow Condensed',sans-serif;
+  --font-mono:'Space Mono',monospace;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --ink:#F0EDE6;--ink2:#C8C4BC;--muted:#9B9690;--hint:#6B6760;
+    --paper:#181614;--paper2:#201E1B;--paper3:#2A2722;
+    --border:#363330;--border2:#464340;
+    --green:#6DB87F;--green2:#8FD4A0;--green3:#B0E8BC;
+    --green-bg:#182218;
+    --amber:#D4A055;--amber-bg:#241C0C;
+    --danger:#D47060;--danger-bg:#2A1810;
+    --surface-nav:rgba(20,18,16,0.96);
+    --shadow-sm:0 1px 4px rgba(0,0,0,.3);
+    --shadow-md:0 4px 20px rgba(0,0,0,.38);
+    --shadow-lg:0 16px 48px rgba(0,0,0,.5);
+  }
+}
+html{scroll-behavior:smooth;}
+body{font-family:var(--font);background:var(--paper);color:var(--ink);font-size:16px;line-height:1.65;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(61,102,71,.035) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(61,102,71,.035) 40px);}
+nav{position:fixed;top:0;left:0;right:0;z-index:200;background:var(--surface-nav);border-bottom:1px solid var(--border);height:64px;padding:0 clamp(20px,5vw,48px);display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);}
+.nav-logo{display:flex;align-items:center;gap:12px;text-decoration:none;flex-shrink:0;}
+.nav-wordmark,.nav-name{font-family:var(--font-cond);font-weight:700;font-size:20px;color:var(--ink);letter-spacing:.05em;text-transform:uppercase;}
+.nav-links{display:flex;align-items:center;gap:4px;list-style:none;}
+.nav-links a{font-size:13px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-decoration:none;padding:8px 12px;border-radius:var(--radius-sm);transition:color var(--t),background var(--t);white-space:nowrap;}
+.nav-links a:hover,.nav-links a.active{color:var(--green);background:var(--green-bg);}
+.nav-cta{margin-left:8px;padding:8px 16px!important;background:var(--green)!important;color:var(--paper)!important;border-radius:var(--radius-md)!important;box-shadow:0 2px 8px rgba(61,102,71,.25)!important;}
+.nav-cta:hover{background:var(--green2)!important;transform:translateY(-1px);color:var(--paper)!important;}
+.mob-btn{display:none;width:44px;height:44px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:18px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0;transition:border-color var(--t),color var(--t);}
+.mob-btn:hover{border-color:var(--green);color:var(--green);}
+.mob-menu{display:none;position:fixed;top:64px;left:0;right:0;z-index:190;background:var(--paper);border-bottom:1px solid var(--border);padding:16px clamp(20px,5vw,48px) 24px;flex-direction:column;gap:2px;box-shadow:var(--shadow-md);}
+.mob-menu a{display:block;padding:14px 12px;font-size:15px;font-weight:600;color:var(--ink);text-decoration:none;border-radius:var(--radius-sm);border-bottom:1px solid var(--border);transition:background var(--t),color var(--t);}
+.mob-menu a:last-of-type{border-bottom:none;}.mob-menu a:hover{background:var(--green-bg);color:var(--green);}
+.mob-cta{display:block;margin-top:12px;padding:14px;background:var(--green)!important;color:var(--paper)!important;text-align:center;font-size:15px;font-weight:700;text-decoration:none;border-radius:var(--radius-md);}
+@media(max-width:900px){.nav-links{display:none;}.mob-btn{display:flex;}}
+footer{background:#0E0C0A;padding:36px clamp(20px,5vw,48px);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;position:relative;z-index:1;}
+.fl{display:flex;align-items:center;gap:12px;}
+.fn{font-family:var(--font-cond);font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.32);}
+.fc{font-size:11px;color:rgba(255,255,255,.18);font-family:var(--font-mono);}
+.flinks{display:flex;gap:4px;flex-wrap:wrap;}
+.flinks a{font-size:12px;color:rgba(255,255,255,.28);text-decoration:none;padding:6px 10px;border-radius:var(--radius-sm);transition:color var(--t),background var(--t);}
+.flinks a:hover{color:rgba(255,255,255,.7);background:rgba(255,255,255,.06);}
+.btn-p{display:inline-flex;align-items:center;gap:9px;padding:14px 28px;background:var(--green);color:var(--paper);font-family:var(--font);font-size:14px;font-weight:600;border-radius:var(--radius-md);text-decoration:none;border:none;cursor:pointer;transition:background var(--t),transform var(--t),box-shadow var(--t);box-shadow:0 4px 14px rgba(61,102,71,.26);}
+.btn-p:hover{background:var(--green2);transform:translateY(-2px);}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--green);margin-bottom:14px;display:flex;align-items:center;gap:12px;}
+.eyebrow::before{content:'';width:24px;height:1.5px;background:var(--green);flex-shrink:0;}
+.container{max-width:1120px;margin:0 auto;padding:0 clamp(20px,5vw,48px);}
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .5s ease,transform .5s ease;}
+.reveal.in{opacity:1;transform:none;}
+.d1{transition-delay:.1s;}.d2{transition-delay:.2s;}.d3{transition-delay:.3s;}
+
+
+  /* LAYOUT */
+  .guide-wrap { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; padding-top: 64px; position: relative; z-index: 1; }
+  @media (max-width: 900px) { .guide-wrap { grid-template-columns: 1fr; } .sidebar { display: none; } }
+
+  /* SIDEBAR */
+  .sidebar { position: sticky; top: 64px; height: calc(100vh - 60px); overflow-y: auto; padding: 32px 0; border-right: 1px solid var(--border); background: var(--paper); }
+  .sidebar-section { margin-bottom: 28px; }
+  .sidebar-heading { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: .18em; text-transform: uppercase; color: var(--hint); padding: 0 24px 8px; }
+  .sidebar-link { display: block; padding: 7px 24px; font-size: 13px; color: var(--muted); text-decoration: none; transition: color .15s, background .15s; border-left: 2px solid transparent; }
+  .sidebar-link:hover { color: var(--green); background: var(--green-bg); }
+  .sidebar-link.active { color: var(--green); border-left-color: var(--green); background: var(--green-bg); font-weight: 600; }
+
+  /* CONTENT */
+  .guide-content { max-width: 780px; padding: 48px clamp(24px,5vw,56px) 100px; }
+
+  /* PAGE HERO */
+  .page-eyebrow { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--green); margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+  .page-eyebrow::before { content: ''; width: 20px; height: 1px; background: var(--green); }
+  .page-title { font-family: 'Barlow Condensed', sans-serif; font-size: 52px; font-weight: 700; line-height: 1.0; margin-bottom: 14px; }
+  .page-sub { font-size: 16px; font-weight: 300; color: var(--ink2); max-width: 520px; line-height: 1.7; margin-bottom: 48px; border-bottom: 1px solid var(--border); padding-bottom: 48px; }
+
+  /* GUIDE SECTIONS */
+  .guide-section { margin-bottom: 64px; scroll-margin-top: 80px; }
+  .guide-section-label { font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--green); margin-bottom: 8px; }
+  .guide-section-title { font-family: 'Barlow Condensed', sans-serif; font-size: 32px; font-weight: 700; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 2px solid var(--ink); }
+  .guide-section p { font-size: 15px; font-weight: 300; color: var(--ink2); line-height: 1.75; margin-bottom: 16px; }
+  .guide-section p strong { font-weight: 600; color: var(--ink); }
+
+  /* SUBSECTIONS */
+  .guide-sub { margin-bottom: 40px; }
+  .guide-sub-title { font-family: 'Barlow Condensed', sans-serif; font-size: 22px; font-weight: 700; margin-bottom: 12px; margin-top: 32px; display: flex; align-items: center; gap: 10px; }
+  .guide-sub-title .page-badge { font-size: 11px; font-family: 'Space Mono', monospace; background: var(--green-bg); color: var(--green); padding: 2px 8px; border-radius: 8px; font-weight: 400; }
+
+  /* BUTTON REFERENCE TABLE */
+  .btn-table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 13px; }
+  .btn-table th { text-align: left; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--hint); padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .btn-table td { padding: 10px 12px; border-bottom: 1px solid rgba(212,207,196,.5); vertical-align: top; }
+  .btn-table tr:last-child td { border-bottom: none; }
+  .btn-table tr:hover td { background: var(--paper2); }
+  .btn-action { display: inline-block; padding: 2px 8px; border-radius: 5px; font-family: 'Space Mono', monospace; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .btn-single { background: var(--green-bg); color: var(--green); }
+  .btn-long { background: var(--amber-bg); color: var(--amber); }
+  .btn-double { background: #e8f0f8; color: #2d6a9f; }
+  .btn-hold { background: var(--red-bg); color: var(--red); }
+  .btn-desc { color: var(--ink2); line-height: 1.5; }
+
+  /* TIP BOX */
+  .tip { background: var(--green-bg); border-left: 3px solid var(--green); border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 16px 0; font-size: 13px; color: var(--ink2); line-height: 1.6; }
+  .tip strong { color: var(--green); font-weight: 700; }
+  .warn { background: var(--amber-bg); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 16px 0; font-size: 13px; color: var(--ink2); line-height: 1.6; }
+  .warn strong { color: var(--amber); font-weight: 700; }
+
+  /* STEP LIST */
+  .steps { list-style: none; display: flex; flex-direction: column; gap: 12px; margin: 16px 0 24px; }
+  .steps li { display: flex; gap: 16px; font-size: 14px; color: var(--ink2); line-height: 1.6; }
+  .step-n { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--green); min-width: 24px; padding-top: 3px; font-weight: 700; }
+
+  /* OLED INLINE MOCK */
+  .oled-inline { display: inline-flex; vertical-align: middle; background: #111; border-radius: 6px; padding: 6px 10px; font-family: 'Space Mono', monospace; font-size: 10px; color: #3fb950; line-height: 1.4; margin: 4px 0; }
+
+  /* REQUIREMENTS */
+  .req-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .req-card { background: var(--paper2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .req-title { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+  .req-val { font-size: 13px; font-weight: 300; color: var(--muted); }
+
+  /* CODE */
+  code { font-family: 'Space Mono', monospace; font-size: 12px; background: var(--paper2); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); }
+
+  /* FADE */
+  .fade-up { opacity: 0; transform: translateY(16px); transition: opacity .4s ease, transform .4s ease; }
+  .fade-up.visible { opacity: 1; transform: none; }
+
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">
+    <svg width="28" height="28" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+        <circle cx="36" cy="36" r="32" stroke="var(--green)" stroke-width="3.5"/>
+        <circle cx="36" cy="36" r="20" stroke="var(--green)" stroke-width="2" stroke-dasharray="2.5 4" opacity=".45"/>
+        <line x1="36" y1="4" x2="36" y2="16" stroke="var(--green)" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M 50 22 A 20 20 0 0 1 50 50" stroke="var(--green)" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <path d="M 57 14 A 30 30 0 0 1 57 58" stroke="var(--green)" stroke-width="2" stroke-linecap="round" fill="none" opacity=".4"/>
+        <circle cx="36" cy="36" r="4" fill="var(--green)"/>
+        <line x1="4" y1="36" x2="11" y2="36" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" opacity=".5"/>
+        <line x1="36" y1="68" x2="36" y2="61" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" opacity=".5"/>
+      </svg>
+    <span class="nav-name">OEO</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="features.html">Device &amp; App</a></li>
+    <li><a href="guide.html" class="active">User Guide</a></li>
+    <li><a href="flash.html">Flash</a></li>
+    <li><a href="https://azimuth.oeo.dev" class="nav-cta">Launch App ↗</a></li>
+  </ul>
+  <button id="mob-btn" aria-label="Open menu" aria-expanded="false" style="display:none;width:44px;height:44px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:18px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0;">☰</button>
+</nav>
+
+<div id="mob-menu" style="display:none;position:fixed;top:64px;left:0;right:0;z-index:190;background:var(--paper);border-bottom:1px solid var(--border);padding:16px clamp(24px,5vw,48px) 24px;flex-direction:column;gap:2px;box-shadow:var(--shadow-md);">
+  <a href="index.html"    style="display:block;padding:14px 12px;font-size:15px;font-weight:600;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--border);">Home</a>
+  <a href="features.html" style="display:block;padding:14px 12px;font-size:15px;font-weight:600;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--border);">Device &amp; App</a>
+  <a href="guide.html"    style="display:block;padding:14px 12px;font-size:15px;font-weight:600;color:var(--green);text-decoration:none;border-bottom:1px solid var(--border);">User Guide</a>
+  <a href="flash.html"    style="display:block;padding:14px 12px;font-size:15px;font-weight:600;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--border);">Flash Firmware</a>
+  <a href="https://azimuth.oeo.dev" style="display:block;margin-top:12px;padding:14px;background:var(--green);color:var(--paper);text-align:center;font-size:15px;font-weight:700;text-decoration:none;border-radius:var(--radius-md);">Launch Azimuth →</a>
+</div>
+
+<div class="guide-wrap">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Getting Started</div>
+      <a href="#first-boot" class="sidebar-link active">First Boot</a>
+      <a href="#pairing" class="sidebar-link">Pairing with the App</a>
+      <a href="#navigation" class="sidebar-link">Button Navigation</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Device Pages</div>
+      <a href="#page-position" class="sidebar-link">Position</a>
+      <a href="#page-messages" class="sidebar-link">Messages</a>
+      <a href="#page-compass" class="sidebar-link">Compass</a>
+      <a href="#page-track" class="sidebar-link">Track / Route</a>
+      <a href="#page-waypoint" class="sidebar-link">Waypoint</a>
+      <a href="#page-elevation" class="sidebar-link">Elevation</a>
+      <a href="#page-routelog" class="sidebar-link">Route Log</a>
+      <a href="#page-weather" class="sidebar-link">Weather</a>
+      <a href="#page-clock" class="sidebar-link">Clock</a>
+      <a href="#page-countdown" class="sidebar-link">Countdown</a>
+      <a href="#page-stopwatch" class="sidebar-link">Stopwatch</a>
+      <a href="#page-info" class="sidebar-link">Device Info</a>
+      <a href="#page-settings" class="sidebar-link">Settings</a>
+      <a href="#page-power" class="sidebar-link">Power Off</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Web App</div>
+      <a href="#app-map" class="sidebar-link">Map & Tracking</a>
+      <a href="#app-peers" class="sidebar-link">Azimuth Peers</a>
+      <a href="#app-messages" class="sidebar-link">Messaging</a>
+      <a href="#app-routes" class="sidebar-link">Route Export</a>
+      <a href="#app-settings" class="sidebar-link">Settings</a>
+      <a href="#app-lora" class="sidebar-link">LoRa Network</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Reference</div>
+      <a href="#troubleshooting" class="sidebar-link">Troubleshooting</a>
+      <a href="#tips" class="sidebar-link">Tips & Tricks</a>
+    </div>
+  </aside>
+
+  <!-- CONTENT -->
+  <main class="guide-content">
+
+    <div class="page-eyebrow">Azimuth — User Guide</div>
+    <h1 class="page-title">How to use<br>Azimuth.</h1>
+    <p class="page-sub">A complete walkthrough for every page, button interaction and web app feature. New to Azimuth? Start with First Boot and work your way down.</p>
+
+    <!-- ─────────────────────────────────────── -->
+    <!-- GETTING STARTED                          -->
+    <!-- ─────────────────────────────────────── -->
+    <div class="guide-section" id="first-boot">
+      <div class="guide-section-label">Getting Started</div>
+      <div class="guide-section-title">First Boot</div>
+
+      <p>When you power on Azimuth for the first time, the OLED briefly shows the OEO splash screen, then moves to the Position page while the GPS acquires a fix. This can take a few minutes outdoors — the device is downloading almanac data from satellites.</p>
+
+      <div class="tip"><strong>Tip:</strong> For the fastest first fix, go outside with a clear view of the sky and stay still for 1–2 minutes. Subsequent fixes are much faster as the device remembers its last known position.</div>
+
+      <div class="guide-sub-title">What you'll see</div>
+      <p>The Position page shows <strong>Acquiring…</strong> with an animated bar and the current satellite count while waiting for a fix. Once acquired, coordinates, speed, heading, altitude and satellite count are displayed.</p>
+
+      <p>The small icons in the top-right corner of every page show BLE connection status and battery level. A <strong>B</strong> icon appears when the web app is connected.</p>
+    </div>
+
+    <div class="guide-section" id="pairing">
+      <div class="guide-section-label">Getting Started</div>
+      <div class="guide-section-title">Pairing with the Web App</div>
+
+      <p>Azimuth uses Web Bluetooth — no installation required. The companion app runs entirely in your browser.</p>
+
+      <div class="warn"><strong>Requirement:</strong> Web Bluetooth requires Google Chrome (desktop or Android). Safari and Firefox are not supported. iOS Chrome does not support Web Bluetooth — use an Android device or desktop Chrome on iPhone/iPad.</div>
+
+      <ol class="steps">
+        <li><span class="step-n">01</span>Open <strong>azimuth.oeo.dev</strong> in Chrome</li>
+        <li><span class="step-n">02</span>Tap <strong>Connect</strong> in the top-right corner</li>
+        <li><span class="step-n">03</span>A Bluetooth device picker appears — select your Azimuth device (named <code>Azimuth-XXXXXX</code>)</li>
+        <li><span class="step-n">04</span>A PIN entry screen appears in the app</li>
+        <li><span class="step-n">05</span>Navigate to the <strong>Device Info</strong> page on your Azimuth (near the end of the page list) — the 6-digit PIN is displayed there</li>
+        <li><span class="step-n">06</span>Enter the PIN in the app and tap Verify</li>
+        <li><span class="step-n">07</span>The app connects, syncs settings and your position appears on the map</li>
+      </ol>
+
+      <div class="tip"><strong>Tip:</strong> The PIN changes every time the device restarts. It's shown permanently on the Device Info page — no need to remember it.</div>
+      <div class="tip"><strong>Tip:</strong> Install the web app as a PWA — in Chrome, tap the install icon in the address bar. This gives you an app icon on your home screen and offline capability.</div>
+    </div>
+
+    <div class="guide-section" id="navigation">
+      <div class="guide-section-label">Getting Started</div>
+      <div class="guide-section-title">Button Navigation</div>
+
+      <p>Azimuth has a single physical button on the top of the device. All navigation is done through press duration and timing.</p>
+
+      <table class="btn-table">
+        <thead>
+          <tr><th>Press type</th><th>Timing</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td style="color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;">&lt; 500ms</td><td class="btn-desc">Advance to next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press</span></td><td style="color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;">1–3s</td><td class="btn-desc">Context action for current page (mark waypoint, start/stop timer, edit setting, etc.)</td></tr>
+          <tr><td><span class="btn-action btn-double">Double press</span></td><td style="color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;">2 presses &lt; 400ms</td><td class="btn-desc">Secondary action (start/stop route recording on Track page)</td></tr>
+          <tr><td><span class="btn-action btn-hold">Hold 3s</span></td><td style="color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;">&gt; 3s</td><td class="btn-desc">Confirm power off (Power Off page only)</td></tr>
+        </tbody>
+      </table>
+
+      <div class="tip"><strong>Tip:</strong> Most pages show a small hint at the bottom of the OLED screen showing what the long press action does on that page.</div>
+    </div>
+
+    <!-- ─────────────────────────────────────── -->
+    <!-- DEVICE PAGES                             -->
+    <!-- ─────────────────────────────────────── -->
+
+    <div class="guide-section" id="page-position">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Position <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 01</span></div>
+      <p>The home page of the device. Shows your GPS coordinates, speed, heading, altitude and the number of satellites in view. While waiting for a fix it shows <strong>Acquiring…</strong> with an animated satellite graphic.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press (hold)</span></td><td class="btn-desc">Shows the BLE pairing PIN for as long as the button is held. Release to return to this page. Works on both the Acquiring and Position screens.</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><strong>Tip:</strong> The PIN overlay is the quickest way to find your PIN without navigating to the Device Info page — useful when someone nearby needs to connect quickly.</div>
+      <div class="tip"><strong>Tip:</strong> The top-right corner shows a message counter like <code>2:5</code> (2 unread of 5 total) when LoRa messages have arrived. Navigate to the Messages page to read them.</div>
+    </div>
+
+    <div class="guide-section" id="page-messages">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Messages <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">conditional</span></div>
+      <p>This page only appears when LoRa messages have been received. It shows the last 3 messages with sender name, message preview and time received. Navigating to this page marks all messages as read.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press</span></td><td class="btn-desc">Clear all messages</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><strong>Tip:</strong> Reply to messages from the web app — select the sender in the Peers panel and use the direct message field.</div>
+    </div>
+
+    <div class="guide-section" id="page-compass">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Compass <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 02</span></div>
+      <p>An animated compass rose driven by GPS heading. The needle rotates in real time. Shows bearing in degrees, cardinal direction, current speed and altitude alongside the compass graphic.</p>
+      <div class="warn"><strong>Note:</strong> The compass uses GPS heading, not a magnetometer. It requires you to be moving at more than ~2 km/h to show a reliable bearing. When stationary the needle may spin.</div>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press</span></td><td class="btn-desc">Turn screen off (without powering down) — useful to save battery during navigation</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><strong>Tip:</strong> Use long press on the Compass page to black out the screen during a long ride. Any subsequent button press brings the screen back on.</div>
+    </div>
+
+    <div class="guide-section" id="page-track">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Track / Route <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 03</span></div>
+      <p>Controls route recording. Shows current status (recording or stopped), point count, elapsed time and total distance. A flashing LED indicates active recording.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-double">Double press</span></td><td class="btn-desc">Start or stop route recording. When stopped, the completed route is automatically saved to the route log.</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press</span></td><td class="btn-desc">Clear the current in-memory route (does not delete saved route log entries)</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><strong>Tip:</strong> Double press to stop recording — the route is saved to the log automatically. Long press only clears the live route display, not the saved log.</div>
+      <div class="tip"><strong>Tip:</strong> When connected to the web app, a red <strong>● REC</strong> badge appears in the header confirming the device is recording. Your live route is drawn on the map in red.</div>
+    </div>
+
+    <div class="guide-section" id="page-waypoint">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Waypoint / Navigate <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 04</span></div>
+      <p>In its default state this page shows your current coordinates and invites you to mark a waypoint. Once marked, it switches to <strong>Navigate</strong> mode — showing a bearing arrow and distance to your saved point.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press (no waypoint)</span></td><td class="btn-desc">Mark current position as waypoint — switches to Navigate mode</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press (waypoint saved)</span></td><td class="btn-desc">Clear waypoint — returns to default state</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><strong>Tip:</strong> Your saved waypoint is broadcast to nearby Azimuth peers over LoRa. They can see your waypoint on their web app map and know how far away it is.</div>
+      <div class="tip"><strong>Tip:</strong> Use the waypoint to mark your car, your campsite, or a rendezvous point before heading out. The bearing arrow always points back to it.</div>
+    </div>
+
+    <div class="guide-section" id="page-elevation">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Elevation <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 05</span></div>
+      <p>A scrolling elevation chart showing altitude over time. Useful for seeing ascent/descent patterns on a hike or ride. Displays current altitude, min/max range and total climb.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press</span></td><td class="btn-desc">Toggle between bar chart and line chart display</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="guide-section" id="page-routelog">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Route Log <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">conditional</span></div>
+      <p>Lists all routes saved to the device. Shows route number, point count and distance for each. Up to 10 routes stored — the oldest is automatically overwritten when full.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press</span></td><td class="btn-desc">Clear all logged routes from device memory</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><strong>Tip:</strong> Export routes to GPX before clearing — connect the web app, open the hamburger menu and tap <strong>Import routes from device</strong>. Then use the GPX export button.</div>
+    </div>
+
+    <div class="guide-section" id="page-weather">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Weather <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">conditional</span></div>
+      <p>Shows current weather conditions from OpenWeatherMap. Displays a 24×24px icon, temperature, condition text and when the data was last fetched. The device connects to WiFi every 6 hours to refresh.</p>
+      <div class="warn"><strong>Setup required:</strong> Weather needs a free OpenWeatherMap API key. Add it in the web app under Settings → Network → OpenWeatherMap API Key. WiFi credentials must also be saved.</div>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press (hold)</span></td><td class="btn-desc">Show Sky & Sun detail while held: wind, humidity, sunrise/sunset, golden hour, moon phase, magnetic declination. Reverts when released.</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><strong>Tip:</strong> The Sky & Sun detail is a hidden gesture — there's no on-screen hint. Hold the button from the Weather page to reveal it.</div>
+    </div>
+
+    <div class="guide-section" id="page-clock">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Clock <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 06</span></div>
+      <p>A GPS-synced clock. Accurate to within a second once a GPS fix is acquired. The timezone can be adjusted to show local time.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press (normal mode)</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press</span></td><td class="btn-desc">Enter timezone edit mode — display changes to show UTC offset</td></tr>
+          <tr><td><span class="btn-action btn-single">Single press (edit mode)</span></td><td class="btn-desc">Cycle UTC offset (+/- hours)</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press (edit mode)</span></td><td class="btn-desc">Save timezone and return to normal mode</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><strong>Tip:</strong> Timezone is saved to device storage (NVS) and persists through power cycles. You only need to set it once.</div>
+    </div>
+
+    <div class="guide-section" id="page-countdown">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Countdown <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 07</span></div>
+      <p>A countdown timer with seven preset durations. Useful for timing intervals, rest periods or any time-based activity.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press (idle)</span></td><td class="btn-desc">Start countdown</td></tr>
+          <tr><td><span class="btn-action btn-single">Single press (running)</span></td><td class="btn-desc">Pause countdown</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press (idle)</span></td><td class="btn-desc">Enter set mode — choose from 5, 10, 15, 20, 30, 45 or 60 minutes</td></tr>
+          <tr><td><span class="btn-action btn-single">Single press (set mode)</span></td><td class="btn-desc">Cycle to next preset</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press (set mode)</span></td><td class="btn-desc">Confirm selection and return to idle</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press (running/paused)</span></td><td class="btn-desc">Reset to selected duration</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><strong>Tip:</strong> When the countdown reaches zero the OLED flashes and the LED blinks rapidly for 5 seconds.</div>
+    </div>
+
+    <div class="guide-section" id="page-stopwatch">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Stopwatch <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 08</span></div>
+      <p>A simple HH:MM:SS stopwatch. Navigate away and return — it keeps running in the background.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press (stopped)</span></td><td class="btn-desc">Start stopwatch</td></tr>
+          <tr><td><span class="btn-action btn-single">Single press (running)</span></td><td class="btn-desc">Stop stopwatch</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press</span></td><td class="btn-desc">Reset to 00:00:00</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="guide-section" id="page-info">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Device Info <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 09</span></div>
+      <p>Displays device name, firmware version, battery percentage, WiFi SSID (if configured) and the 6-digit BLE pairing PIN. This is where to find the PIN when connecting the web app.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press</span></td><td class="btn-desc">Show about screen with firmware version and oeo.dev URL</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><strong>Tip:</strong> The PIN is regenerated on every boot. If the web app says PIN verification failed, restart the device and try the new PIN.</div>
+    </div>
+
+    <div class="guide-section" id="page-settings">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Settings <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 10</span></div>
+      <p>On-device configuration for speed units, elevation units, screen timeout and brightness. All settings are also configurable via the web app and saved to device flash.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press (normal)</span></td><td class="btn-desc">Next page</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press</span></td><td class="btn-desc">Enter edit mode — highlights first setting row</td></tr>
+          <tr><td><span class="btn-action btn-single">Single press (edit mode)</span></td><td class="btn-desc">Cycle value for highlighted row</td></tr>
+          <tr><td><span class="btn-action btn-double">Double press (edit mode)</span></td><td class="btn-desc">Move to next setting row</td></tr>
+          <tr><td><span class="btn-action btn-long">Long press (edit mode)</span></td><td class="btn-desc">Save and exit edit mode</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="guide-section" id="page-power">
+      <div class="guide-section-label">Device Pages</div>
+      <div class="guide-section-title">Power Off <span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--hint);font-weight:400;">page 11</span></div>
+      <p>The last page in the list. Confirms before entering deep sleep to avoid accidental shutdown. This page also houses the <strong>SOS function</strong> — a double press activates a repeating emergency broadcast over LoRa.</p>
+      <table class="btn-table">
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><span class="btn-action btn-single">Single press</span></td><td class="btn-desc">Cancel — go back to Position page</td></tr>
+          <tr><td><span class="btn-action btn-hold">Hold 3 seconds</span></td><td class="btn-desc">Confirm shutdown — device enters deep sleep</td></tr>
+          <tr><td><span class="btn-action btn-double">Double press</span></td><td class="btn-desc">Activate SOS — broadcasts an encrypted SOS packet over LoRa 6 times at 4-second intervals. LED flashes rapidly while active. OLED shows SOS status and remaining transmissions.</td></tr>
+          <tr><td><span class="btn-action btn-single">Single press (SOS active)</span></td><td class="btn-desc">Cancel SOS broadcast immediately</td></tr>
+        </tbody>
+      </table>
+      <div class="warn"><strong>SOS behaviour:</strong> When an SOS packet is received, the receiving device flashes its LED 8 times and sends an alert to the connected web app. The web app shows a red banner across the top of the screen with the sender's name and location, and places a red SOS marker on the map.</div>
+      <div class="tip"><strong>Tip:</strong> Deep sleep draws &lt;50µA. For long storage, power off with the Power Off page. Press the button briefly to wake.</div>
+    </div>
+
+    <!-- ─────────────────────────────────────── -->
+    <!-- WEB APP                                  -->
+    <!-- ─────────────────────────────────────── -->
+
+    <div class="guide-section" id="app-map">
+      <div class="guide-section-label">Web App</div>
+      <div class="guide-section-title">Map & Tracking</div>
+      <p>The main view of the web app is a live map. Your device position is shown as an orange marker with your device name as a label. The map follows your position automatically until you scroll or zoom manually.</p>
+      <ul class="steps">
+        <li><span class="step-n">→</span><strong>Scroll away</strong> from your position to explore the map — auto-follow pauses</li>
+        <li><span class="step-n">→</span><strong>Locate button</strong> (crosshair, bottom-right of map) snaps back to your position and re-enables auto-follow</li>
+        <li><span class="step-n">→</span>Switch map tiles using the button overlaid on the map — CyclOSM is best for outdoor use</li>
+        <li><span class="step-n">→</span><strong>Approximate position</strong> (amber marker + circle) shows before GPS fix — driven by WiFi or IP geolocation</li>
+      </ul>
+      <div class="tip"><strong>Tip:</strong> CyclOSM shows cycle paths, bridleways and footpaths that aren't visible on standard map tiles — highly recommended for trail use.</div>
+    </div>
+
+    <div class="guide-section" id="app-peers">
+      <div class="guide-section-label">Web App</div>
+      <div class="guide-section-title">Azimuth Peers</div>
+      <p>Tap the signal icon in the header to open the Peers panel. Any nearby Azimuth devices on your LoRa network appear here and as markers on the map. Up to <strong>20 peers</strong> are tracked simultaneously.</p>
+      <ul class="steps">
+        <li><span class="step-n">→</span><strong>Distance button</strong> — draws a dotted line from you to the peer with distance, bearing and ETA label</li>
+        <li><span class="step-n">→</span><strong>Follow button</strong> — map pans to keep the peer centred as they move</li>
+        <li><span class="step-n">→</span><strong>Locate button</strong> — instantly pans the map to the peer's position</li>
+        <li><span class="step-n">→</span>Peer markers show a <strong>heading arrow</strong> indicating direction of travel</li>
+        <li><span class="step-n">→</span>A dashed orange line shows the peer's recent track history</li>
+        <li><span class="step-n">→</span>A 📍 badge and separate map marker shows the peer's saved waypoint</li>
+        <li><span class="step-n">→</span>Toast notifications appear when peers come into or go out of range</li>
+        <li><span class="step-n">→</span><strong>Stale peer alert</strong> — if a peer has not broadcast for 5 minutes, a warning toast appears. The device also flashes its OLED display briefly to alert you.</li>
+        <li><span class="step-n">→</span><strong>SOS alert</strong> — if a peer activates SOS, a red banner appears across the top of the app with their name and coordinates. A red SOS marker is placed on the map and the map pans to their location. Tap Dismiss to clear the banner.</li>
+      </ul>
+      <div class="tip"><strong>Tip:</strong> Multiple distance lines can be active simultaneously — great for monitoring the spread of a group.</div>
+      <div class="tip"><strong>Tip:</strong> SOS alerts persist on screen until manually dismissed, so they're not missed if the app is briefly in the background.</div>
+    </div>
+
+    <div class="guide-section" id="app-messages">
+      <div class="guide-section-label">Web App</div>
+      <div class="guide-section-title">Messaging</div>
+      <p>At the bottom of the Peers panel is a message compose area. Select a recipient (All Peers for broadcast, or a specific device for a direct message) and type up to <strong>48 characters</strong>.</p>
+      <p>Broadcast messages are automatically transmitted <strong>3 times</strong> with 5-second gaps between each attempt, significantly improving delivery reliability in challenging terrain. Direct messages are sent once only.</p>
+      <div class="warn"><strong>Note:</strong> LoRa messaging has a duty cycle limit in the EU — the device waits between transmissions to comply with regulations. Messages may be delayed by a few seconds.</div>
+      <div class="tip"><strong>Tip:</strong> Keep messages short and clear. Good use: "wait at bridge", "heading back", "all ok". The 48 character limit encourages this — think SMS, not essay.</div>
+      <div class="tip"><strong>Tip:</strong> When a message arrives the OLED shows a message counter regardless of which page you're on. Navigate to the Messages page to read them — this also marks them as read.</div>
+    </div>
+
+    <div class="guide-section" id="app-routes">
+      <div class="guide-section-label">Web App</div>
+      <div class="guide-section-title">Route Export</div>
+      <p>Recorded routes are stored on the device and can be imported to the web app at any time over BLE. Open the hamburger menu (☰) to see the Route Export section.</p>
+      <ol class="steps">
+        <li><span class="step-n">01</span>Tap <strong>Import routes from device</strong> — the app fetches all stored routes over BLE</li>
+        <li><span class="step-n">02</span>Routes are displayed on the map in different colours</li>
+        <li><span class="step-n">03</span>An elevation profile chart appears below the map if elevation data exists</li>
+        <li><span class="step-n">04</span>Use the <strong>Export GPX</strong> button to download a GPX file compatible with Strava, Komoot, OsmAnd, etc.</li>
+      </ol>
+      <div class="tip"><strong>Tip:</strong> You can import routes without being on the same walk — connect at home and import yesterday's ride.</div>
+    </div>
+
+    <div class="guide-section" id="app-settings">
+      <div class="guide-section-label">Web App</div>
+      <div class="guide-section-title">Settings</div>
+      <p>Tap ⚙ in the header to open the settings modal. Changes sync to the device immediately over BLE.</p>
+      <ul class="steps">
+        <li><span class="step-n">→</span><strong>Device tab</strong> — rename your device. Name is prefixed with <code>Azimuth-</code> and shown on other peers' screens</li>
+        <li><span class="step-n">→</span><strong>Units tab</strong> — speed in km/h or mph, elevation in metres or feet</li>
+        <li><span class="step-n">→</span><strong>Display tab</strong> — screen timeout (10s to always-on), brightness (full or dim), device theme</li>
+        <li><span class="step-n">→</span><strong>Network tab</strong> — WiFi credentials, OWM key, LoRa region/interval/network key</li>
+        <li><span class="step-n">→</span><strong>Screen tab</strong> — live OLED mirror. Click Capture then Save PNG to grab a screenshot</li>
+      </ul>
+    </div>
+
+    <div class="guide-section" id="app-lora">
+      <div class="guide-section-label">Web App</div>
+      <div class="guide-section-title">LoRa Network Setup</div>
+      <p>LoRa peer sharing works out of the box between any two Azimuth devices on the same frequency. For a private group, set a custom network key so only your devices communicate.</p>
+      <ol class="steps">
+        <li><span class="step-n">01</span>Go to Settings → Network → Peer Settings</li>
+        <li><span class="step-n">02</span>Set <strong>Region</strong> — EU868 for UK/Europe, US915 for North America, AU915 for Australia</li>
+        <li><span class="step-n">03</span>Set <strong>Interval</strong> — how often the device broadcasts its position (10–300 seconds). Shorter = more responsive but more duty cycle usage</li>
+        <li><span class="step-n">04</span>Optionally set a <strong>Network Key</strong> — exactly 16 characters, must match on all devices in your group</li>
+        <li><span class="step-n">05</span>Restart all devices after changing the key</li>
+      </ol>
+      <div class="warn"><strong>EU duty cycle:</strong> In Europe, LoRa devices are limited to 1% transmit time. At 30s intervals Azimuth uses ~0.8% duty cycle — compliant with regulations but worth understanding if you reduce the interval significantly.</div>
+    </div>
+
+    <!-- ─────────────────────────────────────── -->
+    <!-- TROUBLESHOOTING                          -->
+    <!-- ─────────────────────────────────────── -->
+    <div class="guide-section" id="troubleshooting">
+      <div class="guide-section-label">Reference</div>
+      <div class="guide-section-title">Troubleshooting</div>
+
+      <div class="guide-sub-title">Connect button doesn't work</div>
+      <p>Web Bluetooth requires Chrome. Check you're not using Safari, Firefox or a WebView browser. On Android, ensure Bluetooth and Location permissions are granted to Chrome in system settings.</p>
+
+      <div class="guide-sub-title">Device not showing in Bluetooth picker</div>
+      <p>Make sure the device is powered on and not already connected to another browser tab. Only one BLE connection is supported at a time. Close other tabs and try again.</p>
+
+      <div class="guide-sub-title">PIN verification keeps failing</div>
+      <p>The PIN changes on every boot. Restart the device and check the current PIN on the Device Info page. Make sure you're entering it without spaces.</p>
+
+      <div class="guide-sub-title">GPS not acquiring a fix</div>
+      <p>Go outdoors with a clear view of the sky. Buildings and tree canopy significantly reduce signal. The first fix after a long power-off (cold start) can take 2–5 minutes. Subsequent fixes are typically under 30 seconds.</p>
+
+      <div class="guide-sub-title">Peers not appearing</div>
+      <p>Ensure both devices are set to the same LoRa region. Ensure the network key matches on both devices. Check that LoRa broadcasting is enabled (interval &gt; 0). LoRa requires line-of-sight or near-line-of-sight — urban environments reduce range significantly.</p>
+
+      <div class="guide-sub-title">Weather page not showing</div>
+      <p>Weather requires WiFi credentials and an OpenWeatherMap API key saved to the device. Free OWM keys have a call limit — if you've exceeded it, the page shows a fetch error. Check your OWM account dashboard.</p>
+    </div>
+
+    <!-- TIPS & TRICKS -->
+    <div class="guide-section" id="tips">
+      <div class="guide-section-label">Reference</div>
+      <div class="guide-section-title">Tips & Tricks</div>
+
+      <div class="tip"><strong>Battery life:</strong> Set screen timeout to 10s and brightness to dim for best battery life. Deep sleep (Power Off page) draws &lt;50µA.</div>
+      <div class="tip"><strong>Group tracking:</strong> Before a group ride or hike, agree on a network key and set all devices to the same interval. 60s is a good compromise between responsiveness and battery life. Up to 20 devices can be tracked simultaneously.</div>
+      <div class="tip"><strong>Waypoint tip:</strong> Mark your car or trailhead before you set off. The navigation arrow always points back, even without a map or phone signal.</div>
+      <div class="tip"><strong>Screen mirror:</strong> The Screen tab in settings shows a live mirror of the device OLED. Use Capture → Save PNG to take documentation screenshots or share your route status.</div>
+      <div class="tip"><strong>Offline use:</strong> Install the web app as a PWA. Map tiles are cached for offline use — zoom around your planned area while connected to save tiles before going off-grid.</div>
+      <div class="tip"><strong>Sky & Sun detail:</strong> The Weather page long press is a hidden gem — magnetic declination is particularly useful if you're also using a traditional compass alongside the device.</div>
+      <div class="tip"><strong>Multiple routes:</strong> Import all stored routes to the web app before a long expedition so you have a visual record. Each route displays in a different colour.</div>
+      <div class="tip"><strong>SOS practice:</strong> Familiarise yourself with the SOS gesture (double press on Power Off page) before you need it. In an emergency, the device broadcasts your GPS coordinates over LoRa 6 times — any nearby Azimuth user with the web app open will see a red alert banner with your location.</div>
+      <div class="tip"><strong>Message reliability:</strong> Broadcast messages are sent 3 times automatically with 5-second gaps. If terrain is tricky, wait a few seconds before assuming the message didn't get through.</div>
+    </div>
+
+  </main>
+</div>
+
+<footer style="background:#0E0C0A;padding:36px clamp(24px,5vw,64px);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;position:relative;z-index:1;">
+  <a href="index.html" style="display:flex;align-items:center;gap:10px;text-decoration:none;">
+    <svg width="22" height="22" viewBox="0 0 72 72" fill="none"><circle cx="36" cy="36" r="32" stroke="rgba(255,255,255,.28)" stroke-width="4"/><line x1="36" y1="4" x2="36" y2="17" stroke="rgba(255,255,255,.28)" stroke-width="4" stroke-linecap="round"/><path d="M 50 22 A 20 20 0 0 1 50 50" stroke="rgba(255,255,255,.32)" stroke-width="3.5" stroke-linecap="round" fill="none"/><circle cx="36" cy="36" r="4.5" fill="rgba(255,255,255,.28)"/></svg>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.32);">OEO Technologies</span>
+  </a>
+  <span style="font-size:11px;color:rgba(255,255,255,.18);font-family:'Space Mono',monospace;">© 2026 OEO Technologies · MIT License</span>
+  <nav style="display:flex;gap:4px;flex-wrap:wrap;">
+    <a href="index.html" style="font-size:12px;color:rgba(255,255,255,.28);text-decoration:none;padding:6px 10px;border-radius:6px;">Home</a>
+    <a href="features.html" style="font-size:12px;color:rgba(255,255,255,.28);text-decoration:none;padding:6px 10px;border-radius:6px;">Device &amp; App</a>
+    <a href="guide.html" style="font-size:12px;color:rgba(255,255,255,.5);text-decoration:none;padding:6px 10px;border-radius:6px;">User Guide</a>
+    <a href="flash.html" style="font-size:12px;color:rgba(255,255,255,.28);text-decoration:none;padding:6px 10px;border-radius:6px;">Flash</a>
+    <a href="https://github.com/oeo-technologies/azimuth" style="font-size:12px;color:rgba(255,255,255,.28);text-decoration:none;padding:6px 10px;border-radius:6px;">GitHub</a>
+  </nav>
+</footer>
+
+<script>
+// Fade in
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.05 });
+document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+setTimeout(() => { document.querySelector('.page-eyebrow')?.classList.add('visible'); document.querySelector('.page-title')?.classList.add('visible'); document.querySelector('.page-sub')?.classList.add('visible'); }, 80);
+
+// Sidebar active link on scroll
+const sections = document.querySelectorAll('.guide-section[id]');
+const sidebarLinks = document.querySelectorAll('.sidebar-link');
+const observer2 = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      sidebarLinks.forEach(l => l.classList.remove('active'));
+      const link = document.querySelector(`.sidebar-link[href="#${e.target.id}"]`);
+      if (link) link.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+sections.forEach(s => observer2.observe(s));
+
+
+
+const mob=document.getElementById('mob-btn'),menu=document.getElementById('mob-menu');
+function closeMob(){if(menu)menu.style.display='none';if(mob){mob.textContent='\u2630';mob.setAttribute('aria-expanded','false');}}
+if(mob)mob.addEventListener('click',()=>{const o=menu.style.display==='flex';menu.style.display=o?'none':'flex';mob.textContent=o?'\u2630':'\u2715';mob.setAttribute('aria-expanded',String(!o));});
+document.addEventListener('click',e=>{if(menu&&menu.style.display==='flex'&&!menu.contains(e.target)&&mob&&!mob.contains(e.target))closeMob();});
+const ro=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');ro.unobserve(e.target);}}),{threshold:0.08});
+document.querySelectorAll('.reveal').forEach(el=>ro.observe(el));
+
+</script>
+</body>
+</html>

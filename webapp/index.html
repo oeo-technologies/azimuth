@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#3D6647">
+<meta name="description" content="Azimuth is an open-source GPS tracker for outdoor adventures. Real-time position, LoRa peer sharing, no cloud, no subscriptions.">
+<title>OEO Technologies — Azimuth GPS Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=Barlow+Condensed:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --ink:#1C1A17;--ink2:#3D3A34;--muted:#6B6760;--hint:#9B9690;
+  --paper:#F4F1EB;--paper2:#EDE9E0;--paper3:#E4E0D6;
+  --border:#D4CFC4;--border2:#C4BFB4;
+  --green:#3D6647;--green2:#2E5038;--green3:#1A3828;
+  --green-bg:#EAF2EC;--green-mid:#5A8E6A;
+  --amber:#8B6A2E;--amber-bg:#F5EDD8;
+  --surface-nav:rgba(244,241,235,0.96);
+  --shadow-sm:0 1px 4px rgba(28,26,23,.07),0 1px 2px rgba(28,26,23,.05);
+  --shadow-md:0 4px 20px rgba(28,26,23,.10),0 2px 6px rgba(28,26,23,.07);
+  --shadow-lg:0 16px 48px rgba(28,26,23,.13),0 4px 14px rgba(28,26,23,.08);
+  --radius-sm:6px;--radius-md:10px;--radius-lg:16px;--radius-xl:24px;
+  --t:.18s ease;
+  --font:'Barlow',sans-serif;
+  --font-cond:'Barlow Condensed',sans-serif;
+  --font-mono:'Space Mono',monospace;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --ink:#F0EDE6;--ink2:#C8C4BC;--muted:#9B9690;--hint:#6B6760;
+    --paper:#181614;--paper2:#201E1B;--paper3:#2A2722;
+    --border:#363330;--border2:#464340;
+    --green:#6DB87F;--green2:#8FD4A0;--green3:#B0E8BC;
+    --green-bg:#182218;--green-mid:#4A8A5A;
+    --amber:#D4A055;--amber-bg:#241C0C;
+    --surface-nav:rgba(20,18,16,0.96);
+    --shadow-sm:0 1px 4px rgba(0,0,0,.3);
+    --shadow-md:0 4px 20px rgba(0,0,0,.38);
+    --shadow-lg:0 16px 48px rgba(0,0,0,.5);
+  }
+}
+html{scroll-behavior:smooth;}
+body{font-family:var(--font);background:var(--paper);color:var(--ink);font-size:16px;line-height:1.65;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(61,102,71,.035) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(61,102,71,.035) 40px);}
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:200;background:var(--surface-nav);border-bottom:1px solid var(--border);height:64px;padding:0 clamp(20px,5vw,48px);display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);}
+.nav-logo{display:flex;align-items:center;gap:12px;text-decoration:none;flex-shrink:0;}
+.nav-wordmark{font-family:var(--font-cond);font-weight:700;font-size:20px;color:var(--ink);letter-spacing:.05em;text-transform:uppercase;}
+.nav-links{display:flex;align-items:center;gap:4px;list-style:none;}
+.nav-links a{font-size:13px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-decoration:none;padding:8px 12px;border-radius:var(--radius-sm);transition:color var(--t),background var(--t);white-space:nowrap;}
+.nav-links a:hover{color:var(--green);background:var(--green-bg);}
+.nav-cta{padding:10px 22px!important;background:var(--green)!important;color:var(--paper)!important;border-radius:var(--radius-md)!important;box-shadow:0 2px 8px rgba(61,102,71,.25);}
+.nav-cta:hover{background:var(--green2)!important;transform:translateY(-1px);color:var(--paper)!important;}
+.mob-btn{display:none;width:44px;height:44px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:18px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0;transition:border-color var(--t),color var(--t);}
+.mob-btn:hover{border-color:var(--green);color:var(--green);}
+.mob-menu{display:none;position:fixed;top:64px;left:0;right:0;z-index:190;background:var(--paper);border-bottom:1px solid var(--border);padding:16px clamp(20px,5vw,48px) 24px;flex-direction:column;gap:2px;box-shadow:var(--shadow-md);}
+.mob-menu a{display:block;padding:14px 12px;font-size:15px;font-weight:600;color:var(--ink);text-decoration:none;border-radius:var(--radius-sm);border-bottom:1px solid var(--border);transition:background var(--t),color var(--t);}
+.mob-menu a:last-of-type{border-bottom:none;}
+.mob-menu a:hover{background:var(--green-bg);color:var(--green);}
+.mob-cta{display:block;margin-top:12px;padding:14px;background:var(--green);color:var(--paper)!important;text-align:center;font-size:15px;font-weight:700;text-decoration:none;border-radius:var(--radius-md);}
+.mob-cta:hover{background:var(--green2)!important;}
+@media(max-width:900px){.nav-links{display:none;}.mob-btn{display:flex;}}
+/* SHARED */
+section{position:relative;z-index:1;}
+.container{max-width:1120px;margin:0 auto;padding:0 clamp(20px,5vw,48px);}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--green);margin-bottom:14px;display:flex;align-items:center;gap:12px;}
+.eyebrow::before{content:'';width:28px;height:1.5px;background:var(--green);flex-shrink:0;}
+.sec-title{font-family:var(--font-cond);font-size:clamp(34px,4.5vw,52px);font-weight:700;line-height:1.05;letter-spacing:-.01em;margin-bottom:16px;}
+.sec-body{font-size:17px;font-weight:300;color:var(--ink2);line-height:1.75;max-width:560px;}
+.btn-p{display:inline-flex;align-items:center;gap:9px;padding:15px 30px;background:var(--green);color:var(--paper);font-family:var(--font);font-size:15px;font-weight:600;border-radius:var(--radius-md);text-decoration:none;border:none;cursor:pointer;transition:background var(--t),transform var(--t),box-shadow var(--t);box-shadow:0 4px 14px rgba(61,102,71,.28);}
+.btn-p:hover{background:var(--green2);transform:translateY(-2px);box-shadow:0 8px 24px rgba(61,102,71,.33);}
+.btn-s{display:inline-flex;align-items:center;gap:9px;padding:15px 30px;background:transparent;color:var(--ink);font-family:var(--font);font-size:15px;font-weight:600;border-radius:var(--radius-md);text-decoration:none;border:1.5px solid var(--border2);transition:border-color var(--t),color var(--t),transform var(--t);}
+.btn-s:hover{border-color:var(--green);color:var(--green);transform:translateY(-1px);}
+/* HERO */
+.hero{min-height:100svh;display:flex;align-items:center;padding:calc(64px + 60px) clamp(20px,5vw,48px) 80px;position:relative;overflow:hidden;}
+.hero-bg{position:absolute;inset:0;z-index:0;background:radial-gradient(ellipse 70% 60% at 68% 48%,rgba(61,102,71,.08) 0%,transparent 70%);}
+.hero-rings{position:absolute;right:clamp(-120px,-8vw,0px);top:50%;transform:translateY(-50%);width:clamp(400px,55vw,720px);height:clamp(400px,55vw,720px);z-index:0;opacity:.15;pointer-events:none;}
+.hero-content{position:relative;z-index:1;max-width:640px;}
+.hero-eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--green);margin-bottom:22px;display:flex;align-items:center;gap:12px;}
+.hero-eyebrow::before{content:'';width:32px;height:1.5px;background:var(--green);flex-shrink:0;}
+.hero-title{font-family:var(--font-cond);font-weight:800;font-size:clamp(60px,9vw,108px);line-height:.93;letter-spacing:-.02em;margin-bottom:28px;}
+.hero-title em{font-style:italic;font-family:var(--font-cond);font-weight:300;color:var(--green);}
+.hero-sub{font-size:clamp(16px,2vw,19px);font-weight:300;color:var(--ink2);line-height:1.7;max-width:500px;margin-bottom:44px;}
+.hero-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.hero-note{margin-top:22px;font-family:var(--font-mono);font-size:11px;color:var(--hint);letter-spacing:.05em;}
+.hero-device{position:absolute;right:clamp(20px,6vw,80px);top:50%;transform:translateY(-50%);width:clamp(220px,22vw,278px);animation:float 7s ease-in-out infinite;z-index:1;}
+@keyframes float{0%,100%{transform:translateY(-50%);}50%{transform:translateY(calc(-50% - 14px));}}
+@media(max-width:900px){.hero-device{display:none;}}
+.device-frame{background:#141210;border-radius:20px;padding:18px;box-shadow:var(--shadow-lg),0 0 0 1px rgba(255,255,255,.04) inset;}
+.device-screen{background:#090909;border-radius:10px;overflow:hidden;aspect-ratio:2/1;font-family:var(--font-mono);font-size:9.5px;color:#3fb950;padding:12px;position:relative;}
+.dl{margin-bottom:3px;opacity:.85;line-height:1.5;}
+.dl.dim{color:#2a5c35;}
+.dl.hi{color:#7ee787;font-weight:700;}
+.blink{animation:blink 1s step-end infinite;display:inline-block;}
+@keyframes blink{50%{opacity:0;}}
+.device-label{text-align:center;margin-top:11px;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:#3a3832;font-family:var(--font-mono);}
+/* STATS STRIP */
+.stats-strip{background:var(--green3);color:rgba(255,255,255,.7);padding:20px clamp(20px,5vw,48px);display:flex;align-items:center;justify-content:center;gap:clamp(24px,4vw,64px);flex-wrap:wrap;position:relative;z-index:1;}
+@media(prefers-color-scheme:dark){.stats-strip{background:#0E2018;}}
+.stat-num{font-family:var(--font-cond);font-size:clamp(26px,3.5vw,38px);font-weight:700;color:#fff;line-height:1;margin-bottom:3px;}
+.stat-lbl{font-family:var(--font-mono);font-size:9px;letter-spacing:.15em;text-transform:uppercase;opacity:.55;}
+/* FEATURES */
+.features{padding:clamp(72px,8vw,112px) 0;background:var(--paper2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.features-header{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:end;margin-bottom:52px;}
+@media(max-width:700px){.features-header{grid-template-columns:1fr;gap:20px;}}
+.features-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;}
+@media(max-width:900px){.features-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:500px){.features-grid{grid-template-columns:1fr;}}
+.fc{background:var(--paper);padding:32px 26px;transition:background var(--t),transform var(--t);}
+.fc:hover{background:#fff;transform:translateY(-2px);}
+@media(prefers-color-scheme:dark){.fc:hover{background:var(--paper3);}}
+.fc-icon{width:46px;height:46px;background:var(--green-bg);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;margin-bottom:20px;transition:background var(--t);}
+.fc:hover .fc-icon{background:var(--green);}
+.fc-icon svg{width:22px;height:22px;stroke:var(--green);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:stroke var(--t);}
+.fc:hover .fc-icon svg{stroke:var(--paper);}
+.fc-title{font-family:var(--font-cond);font-size:20px;font-weight:700;margin-bottom:10px;}
+.fc-desc{font-size:14px;font-weight:300;color:var(--muted);line-height:1.65;}
+/* HOW */
+.how{padding:clamp(72px,8vw,112px) 0;}
+.how-inner{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center;}
+@media(max-width:800px){.how-inner{grid-template-columns:1fr;gap:48px;}}
+.how-steps{margin-top:36px;}
+.how-step{display:flex;gap:20px;padding:22px 0;border-bottom:1px solid var(--border);}
+.how-step:first-child{border-top:1px solid var(--border);}
+.sn{font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--green);letter-spacing:.1em;min-width:30px;padding-top:3px;}
+.st{font-size:15px;font-weight:600;margin-bottom:4px;}
+.sd{font-size:13px;font-weight:300;color:var(--muted);line-height:1.6;}
+.app-preview{background:var(--paper2);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-lg);}
+.app-bar{background:var(--paper);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:8px;}
+.app-dot{width:11px;height:11px;border-radius:50%;}
+.app-title{font-size:12px;font-weight:600;margin-left:6px;color:var(--ink2);}
+.app-map{height:280px;background:linear-gradient(160deg,#dce8e0 0%,#c8dcd0 100%);position:relative;overflow:hidden;}
+@media(prefers-color-scheme:dark){.app-map{background:linear-gradient(160deg,#1a2e24 0%,#142018 100%);}}
+.mm{position:absolute;width:13px;height:13px;background:var(--green);border:2.5px solid var(--paper);border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.2);}
+.ml{position:absolute;background:var(--paper);border:1px solid var(--border);border-radius:var(--radius-md);padding:3px 9px;font-size:11px;font-weight:600;color:var(--ink2);box-shadow:var(--shadow-sm);white-space:nowrap;}
+.ms{position:absolute;top:12px;left:12px;background:rgba(244,241,235,.94);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 14px;}
+@media(prefers-color-scheme:dark){.ms{background:rgba(24,22,20,.94);}}
+.msr{display:flex;gap:16px;font-family:var(--font-mono);font-size:10px;color:var(--ink2);margin-bottom:3px;}
+.msr:last-child{margin:0;}.msv{font-weight:700;color:var(--ink);}
+.dp{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--paper);border:1.5px solid var(--border);border-radius:12px;padding:4px 12px;font-size:11px;font-weight:600;color:var(--ink2);box-shadow:var(--shadow-sm);white-space:nowrap;}
+/* SPECS */
+.specs{padding:clamp(72px,8vw,112px) 0;background:#101210;border-top:3px solid var(--green);}
+@media(prefers-color-scheme:dark){.specs{background:#0A0C0A;}}
+.specs .eyebrow{color:rgba(109,184,127,.75);}
+.specs .eyebrow::before{background:rgba(109,184,127,.75);}
+.specs .sec-title{color:#fff;}
+.specs-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:48px;margin-top:52px;}
+@media(max-width:700px){.specs-grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:480px){.specs-grid{grid-template-columns:1fr;}}
+.sg-title{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.28);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06);}
+.si{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:13px;}
+.sk{color:rgba(255,255,255,.42);font-weight:300;}
+.sv{color:#fff;font-weight:600;font-family:var(--font-mono);font-size:12px;}
+/* ABOUT */
+.about{padding:clamp(72px,8vw,112px) 0;}
+.about-inner{display:grid;grid-template-columns:1fr 2fr;gap:80px;align-items:start;}
+@media(max-width:800px){.about-inner{grid-template-columns:1fr;gap:40px;}}
+.about-oeo{font-family:var(--font-cond);font-size:32px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);margin-top:20px;}
+.about-tag{font-size:13px;font-weight:300;color:var(--hint);margin-top:4px;letter-spacing:.04em;}
+.about-body p{font-size:17px;font-weight:300;color:var(--ink2);line-height:1.8;margin-bottom:20px;}
+.about-body p strong{font-weight:600;color:var(--ink);}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:32px;}
+.pill{padding:7px 16px;background:var(--green-bg);border:1px solid rgba(61,102,71,.15);border-radius:20px;font-size:12px;font-weight:600;color:var(--green);font-family:var(--font-mono);letter-spacing:.04em;transition:background var(--t),color var(--t),border-color var(--t);cursor:default;}
+.pill:hover{background:var(--green);color:var(--paper);border-color:var(--green);}
+/* OSS */
+.oss{padding:clamp(64px,7vw,96px) 0;background:var(--green);position:relative;overflow:hidden;}
+@media(prefers-color-scheme:dark){.oss{background:#2A5038;}}
+.oss::before{content:'';position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(255,255,255,.04) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(255,255,255,.04) 40px);}
+.oss-inner{position:relative;display:flex;align-items:center;justify-content:space-between;gap:40px;flex-wrap:wrap;}
+.oss h2{font-family:var(--font-cond);font-size:clamp(30px,4vw,50px);font-weight:800;line-height:1.1;color:#fff;}
+.oss h2 em{font-style:italic;font-weight:300;opacity:.7;}
+.oss p{font-size:15px;font-weight:300;color:rgba(255,255,255,.7);margin-top:8px;max-width:420px;line-height:1.65;}
+.btn-ghost{display:inline-flex;align-items:center;gap:9px;padding:15px 28px;border:2px solid rgba(255,255,255,.35);border-radius:var(--radius-md);color:#fff;font-size:15px;font-weight:600;text-decoration:none;white-space:nowrap;transition:border-color var(--t),background var(--t),transform var(--t);}
+.btn-ghost:hover{border-color:#fff;background:rgba(255,255,255,.1);transform:translateY(-2px);}
+/* USE CASES */
+.usecases{padding:clamp(72px,8vw,112px) 0;background:var(--paper2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.uc-header{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:end;margin-bottom:48px;}
+@media(max-width:700px){.uc-header{grid-template-columns:1fr;gap:20px;}}
+.uc-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:28px;}
+.uc-tab{padding:8px 16px;border-radius:20px;border:1.5px solid var(--border2);background:transparent;
+  font-family:var(--font);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);cursor:pointer;transition:all var(--t);}
+.uc-tab:hover{border-color:var(--green);color:var(--green);}
+.uc-tab.active{background:var(--green);border-color:var(--green);color:var(--paper);}
+.uc-card{background:var(--paper);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-sm);}
+.uc-panel{display:none;animation:ucfade .3s ease;}
+.uc-panel.active{display:flex;flex-direction:column;}
+@keyframes ucfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.uc-ch{padding:22px 28px 18px;border-bottom:1px solid var(--border);display:flex;gap:16px;align-items:flex-start;}
+.uc-icon{width:44px;height:44px;border-radius:var(--radius-md);background:var(--green-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px;}
+.uc-ctitle{font-family:var(--font-cond);font-size:20px;font-weight:700;margin-bottom:4px;}
+.uc-cdesc{font-size:13px;font-weight:300;color:var(--muted);line-height:1.6;max-width:600px;}
+.uc-body{padding:24px 28px;}
+/* map canvas */
+canvas.uc-map{width:100%;height:260px;display:block;border-radius:var(--radius-md);background:var(--paper2);}
+/* broadcast */
+.bc-alert{background:var(--paper);border:1.5px solid #C4111150;border-radius:var(--radius-md);padding:14px 18px;display:flex;gap:12px;align-items:flex-start;margin-bottom:16px;}
+.bc-alert-icon{width:32px;height:32px;background:#A32D2D;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0;margin-top:1px;}
+.bc-title{font-family:var(--font-cond);font-size:16px;font-weight:700;color:#A32D2D;margin-bottom:3px;}
+.bc-body{font-size:12px;font-weight:300;color:var(--muted);line-height:1.55;}
+.bc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;}
+.bc-dev{background:var(--paper2);border:1px solid var(--border);border-radius:var(--radius-md);padding:11px 14px;display:flex;gap:10px;align-items:center;transition:border-color .3s,background .3s;}
+.bc-dev.got{border-color:var(--green);background:var(--green-bg);}
+.bc-dot{width:9px;height:9px;border-radius:50%;background:var(--border2);flex-shrink:0;transition:background .3s;}
+.bc-dev.got .bc-dot{background:var(--green);}
+.bc-name{font-size:12px;font-weight:600;color:var(--ink2);}
+.bc-st{font-size:11px;font-weight:300;color:var(--muted);transition:color .3s;}
+.bc-dev.got .bc-st{color:var(--green);}
+/* fleet rows */
+.fl-rows{display:flex;flex-direction:column;gap:8px;}
+.fl-row{background:var(--paper2);border:1px solid var(--border);border-radius:var(--radius-md);padding:11px 16px;display:flex;align-items:center;gap:12px;}
+.fl-av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+.fl-name{font-size:13px;font-weight:600;color:var(--ink2);flex:1;}
+.fl-loc{font-size:12px;font-weight:300;color:var(--muted);}
+.uc-badge{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+.uc-badge.ok{background:var(--green-bg);color:var(--green2);}
+.uc-badge.warn{background:var(--amber-bg);color:var(--amber);}
+.uc-badge.danger{background:#FCEBEB;color:#A32D2D;}
+.fl-pills{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
+/* SAR */
+.sar-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;}
+@media(max-width:600px){.sar-stats{grid-template-columns:repeat(2,1fr);}}
+.sar-stat{background:var(--paper2);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;text-align:center;}
+.sar-num{font-family:var(--font-cond);font-size:26px;font-weight:800;color:var(--ink);line-height:1;}
+.sar-lbl{font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:4px;}
+.sar-team{background:var(--paper2);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.sar-pip{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.sar-tn{font-size:13px;font-weight:600;color:var(--ink2);flex:1;}
+.sar-ts{font-size:11px;font-weight:300;color:var(--muted);}
+.prog{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:5px;}
+.prog-fill{height:100%;border-radius:2px;transition:width 1.4s ease;}
+/* CONTACT */
+.contact{padding:clamp(72px,8vw,112px) 0;}
+.contact-inner{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:start;}
+@media(max-width:800px){.contact-inner{grid-template-columns:1fr;gap:48px;}}
+.cf{display:flex;flex-direction:column;gap:16px;}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media(max-width:500px){.fr{grid-template-columns:1fr;}}
+.field label{display:block;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:7px;}
+.field input,.field textarea,.field select{width:100%;padding:13px 15px;background:var(--paper2);border:1.5px solid var(--border);border-radius:var(--radius-md);font-family:var(--font);font-size:14px;color:var(--ink);outline:none;transition:border-color var(--t),box-shadow var(--t);appearance:none;-webkit-appearance:none;}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(61,102,71,.1);}
+.field textarea{resize:vertical;min-height:130px;line-height:1.6;}
+.ci{display:flex;gap:16px;align-items:flex-start;padding:20px 0;border-bottom:1px solid var(--border);}
+.ci:first-child{border-top:1px solid var(--border);}
+.ci-icon{width:42px;height:42px;background:var(--green-bg);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.ci-icon svg{width:18px;height:18px;stroke:var(--green);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}
+.ci-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px;}
+.ci-val{font-size:14px;color:var(--ink2);}
+/* FOOTER */
+footer{background:#0E0C0A;padding:36px clamp(20px,5vw,48px);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;position:relative;z-index:1;}
+.fl{display:flex;align-items:center;gap:12px;}
+.fn{font-family:var(--font-cond);font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.32);}
+.fc-copy{font-size:11px;color:rgba(255,255,255,.18);font-family:var(--font-mono);}
+.flinks{display:flex;gap:4px;flex-wrap:wrap;}
+.flinks a{font-size:12px;color:rgba(255,255,255,.28);text-decoration:none;padding:6px 10px;border-radius:var(--radius-sm);transition:color var(--t),background var(--t);}
+.flinks a:hover{color:rgba(255,255,255,.7);background:rgba(255,255,255,.06);}
+/* REVEAL */
+.reveal{opacity:0;transform:translateY(20px);transition:opacity .55s ease,transform .55s ease;}
+.reveal.in{opacity:1;transform:none;}
+.d1{transition-delay:.1s;}.d2{transition-delay:.2s;}.d3{transition-delay:.3s;}.d4{transition-delay:.4s;}
+</style>
+</head>
+<body>
+<nav>
+  <a href="index.html" class="nav-logo">
+    <svg width="34" height="34" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="36" cy="36" r="32" stroke="var(--green)" stroke-width="3"/>
+      <circle cx="36" cy="36" r="20" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="2.5 4" opacity=".4"/>
+      <line x1="36" y1="4" x2="36" y2="16" stroke="var(--green)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M 50 22 A 20 20 0 0 1 50 50" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M 57 14 A 30 30 0 0 1 57 58" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".4"/>
+      <circle cx="36" cy="36" r="4" fill="var(--green)"/>
+      <line x1="4" y1="36" x2="11" y2="36" stroke="var(--green)" stroke-width="2" stroke-linecap="round" opacity=".45"/>
+      <line x1="36" y1="68" x2="36" y2="61" stroke="var(--green)" stroke-width="2" stroke-linecap="round" opacity=".45"/>
+    </svg>
+    <span class="nav-wordmark">OEO</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="features.html">Device &amp; App</a></li>
+    <li><a href="guide.html">Guide</a></li>
+    <li><a href="flash.html">Flash</a></li>
+    <li><a href="#usecases">Use cases</a></li>
+    <li><a href="#about">About</a></li>
+    <li><a href="#contact">Contact</a></li>
+    <li><a href="https://azimuth.oeo.dev" class="nav-cta">Launch App</a></li>
+  </ul>
+  <button class="mob-btn" id="mob-btn" aria-label="Open menu" aria-expanded="false">☰</button>
+</nav>
+<div class="mob-menu" id="mob-menu" role="navigation" aria-label="Mobile navigation">
+  <a href="features.html">Device &amp; App</a>
+  <a href="guide.html">User Guide</a>
+  <a href="flash.html">Flash Firmware</a>
+  <a href="#usecases" onclick="closeMob()">Use cases</a>
+  <a href="#about" onclick="closeMob()">About</a>
+  <a href="#contact" onclick="closeMob()">Contact</a>
+  <a href="https://azimuth.oeo.dev" class="mob-cta">Launch Azimuth →</a>
+</div>
+
+<section class="hero">
+  <div class="hero-bg"></div>
+  <svg class="hero-rings" viewBox="0 0 700 700" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <g fill="none" stroke="var(--green)">
+      <circle cx="350" cy="350" r="60" opacity=".6"/><circle cx="350" cy="350" r="110" opacity=".45"/>
+      <circle cx="350" cy="350" r="165" opacity=".35"/><circle cx="350" cy="350" r="222" opacity=".25"/>
+      <circle cx="350" cy="350" r="280" opacity=".17"/><circle cx="350" cy="350" r="332" opacity=".11"/>
+    </g>
+    <line x1="350" y1="18" x2="350" y2="84" stroke="var(--green)" stroke-width="3" stroke-linecap="round" opacity=".28"/>
+    <path d="M 492 228 A 172 172 0 0 1 492 472" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" fill="none" opacity=".16"/>
+    <path d="M 530 172 A 232 232 0 0 1 530 528" stroke="var(--green)" stroke-width="1.8" stroke-linecap="round" fill="none" opacity=".09"/>
+    <line x1="350" y1="682" x2="350" y2="616" stroke="var(--green)" stroke-width="2" stroke-linecap="round" opacity=".16"/>
+    <line x1="18" y1="350" x2="84" y2="350" stroke="var(--green)" stroke-width="2" stroke-linecap="round" opacity=".16"/>
+    <circle cx="350" cy="350" r="7" fill="var(--green)" opacity=".16"/>
+  </svg>
+  <div class="hero-content">
+    <div class="hero-eyebrow reveal">OEO Technologies — GPS Tracker</div>
+    <h1 class="hero-title reveal d1">Know<br><em>where</em><br>you are.</h1>
+    <p class="hero-sub reveal d2">Azimuth is an open-source GPS tracker for outdoor adventures. Real-time peer sharing over LoRa, a beautiful browser-based companion app — no cloud, no subscriptions, no compromises.</p>
+    <div class="hero-actions reveal d3">
+      <a href="https://azimuth.oeo.dev" class="btn-p">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+        Launch Azimuth
+      </a>
+      <a href="guide.html" class="btn-s">Read the guide →</a>
+    </div>
+    <p class="hero-note reveal d4">// Open source · ESP32-S3 · SX1262 LoRa · Web Bluetooth</p>
+  </div>
+  <div class="hero-device">
+    <div class="device-frame">
+      <div class="device-screen">
+        <div class="dl hi">Position</div>
+        <div class="dl">LAT&nbsp; 53.259171</div>
+        <div class="dl">LON&nbsp; -2.518049</div>
+        <div class="dl dim" id="dspd">SPD&nbsp; 12.4 km/h</div>
+        <div class="dl dim" id="dhdg">HDG&nbsp; 219° SW</div>
+        <div class="dl">BAT&nbsp; 87% ▮▮▮▯</div>
+        <div class="dl dim">SAT&nbsp; 9 ●●●●●</div>
+        <div class="dl">LORA <span class="blink">▌</span></div>
+      </div>
+      <div class="device-label">Azimuth · v3.0.6</div>
+    </div>
+  </div>
+</section>
+
+<div class="stats-strip">
+  <div class="stat-item"><div class="stat-num">10km+</div><div class="stat-lbl">LoRa range</div></div>
+  <div class="stat-item"><div class="stat-num">14</div><div class="stat-lbl">OLED pages</div></div>
+  <div class="stat-item"><div class="stat-num">AES&#8209;128</div><div class="stat-lbl">Encrypted</div></div>
+  <div class="stat-item"><div class="stat-num">0</div><div class="stat-lbl">Subscriptions</div></div>
+  <div class="stat-item"><div class="stat-num">MIT</div><div class="stat-lbl">Licensed</div></div>
+</div>
+
+<section class="features" id="features">
+  <div class="container">
+    <div class="features-header">
+      <div><div class="eyebrow reveal">Capabilities</div><h2 class="sec-title reveal d1">Built for the<br>real world.</h2></div>
+      <p class="sec-body reveal d2">From solo hikes to multi-device expeditions, Azimuth gives you the tools to navigate confidently and stay in touch with your group — no signal required.</p>
+    </div>
+    <div class="features-grid">
+      <div class="fc reveal"><div class="fc-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div><div class="fc-title">GPS Positioning</div><div class="fc-desc">Live coordinates, altitude, speed and heading. WiFi-assisted location when indoors or before a fix is acquired.</div></div>
+      <div class="fc reveal d1"><div class="fc-icon"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 015 12a19.79 19.79 0 01-3.07-8.67A2 2 0 013.92 1.11h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg></div><div class="fc-title">LoRa Peer Sharing</div><div class="fc-desc">See your group on the map in real time. AES-128 encrypted, no internet needed. Up to 10km line-of-sight range.</div></div>
+      <div class="fc reveal d2"><div class="fc-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="fc-title">Route Tracking</div><div class="fc-desc">Record and log routes with elevation data. Export to GPX. View multiple saved routes in the companion web app.</div></div>
+      <div class="fc reveal d3"><div class="fc-icon"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div><div class="fc-title">LoRa Messaging</div><div class="fc-desc">Send encrypted messages to your group or direct to a specific device. Displayed on the OLED screen instantly.</div></div>
+    </div>
+    <div style="text-align:center;margin-top:40px;"><a href="features.html" class="btn-s reveal" style="display:inline-flex;">See all features →</a></div>
+  </div>
+</section>
+
+<section class="how" id="how">
+  <div class="container">
+    <div class="how-inner">
+      <div>
+        <div class="eyebrow reveal">How it works</div>
+        <h2 class="sec-title reveal d1">Device + app,<br>working together.</h2>
+        <div class="how-steps">
+          <div class="how-step reveal"><div class="sn">01</div><div><div class="st">Power on the device</div><div class="sd">The device acquires a GPS fix and broadcasts its position over LoRa to anyone sharing your network key.</div></div></div>
+          <div class="how-step reveal"><div class="sn">02</div><div><div class="st">Connect via Bluetooth</div><div class="sd">Open Azimuth in Chrome, tap Connect, enter the on-screen PIN. Works on desktop and Android — no app install needed.</div></div></div>
+          <div class="how-step reveal"><div class="sn">03</div><div><div class="st">See your world</div><div class="sd">Your position appears on the map. Nearby Azimuth devices show as peers. Send messages, track routes, check weather.</div></div></div>
+          <div class="how-step reveal"><div class="sn">04</div><div><div class="st">No cloud required</div><div class="sd">Everything runs peer-to-peer over Bluetooth and LoRa. No account, no data collected, no subscription, ever.</div></div></div>
+        </div>
+      </div>
+      <div class="reveal d2">
+        <div class="app-preview">
+          <div class="app-bar">
+            <div class="app-dot" style="background:#f85149;"></div><div class="app-dot" style="background:#f0883e;margin-left:6px;"></div><div class="app-dot" style="background:#3fb950;margin-left:6px;"></div>
+            <span class="app-title">Azimuth — GPS Tracker</span>
+          </div>
+          <div class="app-map">
+            <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 400 280" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+              <path d="M20 140 Q60 100 100 120 Q140 140 180 110 Q220 80 260 100 Q300 120 340 90" fill="none" stroke="rgba(61,102,71,.22)" stroke-width="2.5"/>
+              <path d="M60 200 Q100 180 140 190 Q180 200 220 170 Q250 150 280 160" fill="none" stroke="rgba(61,102,71,.16)" stroke-width="2"/>
+              <path d="M180 110 Q190 150 200 180 Q210 200 220 170" fill="none" stroke="rgba(88,166,255,.4)" stroke-width="2.5" stroke-dasharray="5 3"/>
+            </svg>
+            <div class="mm" style="left:180px;top:105px;"></div>
+            <div class="ml" style="left:196px;top:99px;">Proto1</div>
+            <div class="mm" style="left:300px;top:115px;background:#E86D1F;"></div>
+            <div class="ml" style="left:316px;top:109px;">Proto2</div>
+            <div class="ms"><div class="msr"><span>LAT</span>&nbsp;<span class="msv">53.2592</span></div><div class="msr"><span>LON</span>&nbsp;<span class="msv">-2.5180</span></div><div class="msr"><span>SAT</span>&nbsp;<span class="msv">9</span></div></div>
+            <div class="dp">2.37km · 219° SW</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="usecases" id="usecases">
+  <div class="container">
+    <div class="uc-header">
+      <div>
+        <div class="eyebrow reveal">Real world scenarios</div>
+        <h2 class="sec-title reveal d1">Where signal ends,<br>Azimuth begins.</h2>
+      </div>
+      <p class="sec-body reveal d2">LoRa radio reaches up to 10km line-of-sight with no phone signal, no internet, no infrastructure. See how groups stay connected in the field.</p>
+    </div>
+    <div class="uc-tabs reveal">
+      <button class="uc-tab active" onclick="ucShow('hike',this)">Group hike</button>
+      <button class="uc-tab" onclick="ucShow('broadcast',this)">Broadcast alert</button>
+      <button class="uc-tab" onclick="ucShow('fell',this)">Fell race</button>
+      <button class="uc-tab" onclick="ucShow('sar',this)">Search &amp; rescue</button>
+      <button class="uc-tab" onclick="ucShow('festival',this)">Festival camp</button>
+    </div>
+    <div class="uc-card reveal d1">
+
+      <!-- HIKE -->
+      <div id="uc-hike" class="uc-panel active">
+        <div class="uc-ch">
+          <div class="uc-icon">🥾</div>
+          <div>
+            <div class="uc-ctitle">Group hike — two sub-groups</div>
+            <div class="uc-cdesc">Group A takes the ridge route, Group B follows the valley. Each device broadcasts its GPS position every 30 seconds over LoRa — no phone signal needed. Both groups see each other on the map.</div>
+          </div>
+        </div>
+        <div class="uc-body"><canvas id="ucHikeCanvas" class="uc-map"></canvas></div>
+      </div>
+
+      <!-- BROADCAST -->
+      <div id="uc-broadcast" class="uc-panel">
+        <div class="uc-ch">
+          <div class="uc-icon" style="background:#A32D2D;">⛈</div>
+          <div>
+            <div class="uc-ctitle">Broadcast alert — incoming storm</div>
+            <div class="uc-cdesc">One Azimuth-connected device sends a broadcast message. Every device in LoRa range receives it instantly — no infrastructure, no internet, no phone signal required.</div>
+          </div>
+        </div>
+        <div class="uc-body">
+          <div class="bc-alert">
+            <div class="bc-alert-icon" style="background:#A32D2D;font-size:20px;">⚠</div>
+            <div>
+              <div class="bc-title">Storm — turn back now</div>
+              <div class="bc-body">Sent by Azimuth-Jamie · 14:32 · "Descend Grisedale NOW lightning"<br><span style="font-family:var(--font-mono);font-size:10px;color:var(--hint);">31 chars · max 48</span></div>
+            </div>
+          </div>
+          <div class="bc-grid" id="ucBcGrid"></div>
+        </div>
+      </div>
+
+      <!-- FELL -->
+      <div id="uc-fell" class="uc-panel">
+        <div class="uc-ch">
+          <div class="uc-icon">🏃</div>
+          <div>
+            <div class="uc-ctitle">Fell race — marshal tracking</div>
+            <div class="uc-cdesc">Race marshals carry Azimuth devices at each checkpoint. The race controller watches the live fleet map from base camp — each marshal's position, distance and last-seen time visible in real time. No radio check-ins needed for position.</div>
+          </div>
+        </div>
+        <div class="uc-body">
+          <div class="fl-pills">
+            <span class="uc-badge ok">Up to 20 devices tracked</span>
+            <span class="uc-badge ok">Live positions on map</span>
+            <span class="uc-badge warn">Stale alert at 5 min</span>
+          </div>
+          <div class="fl-rows" id="ucFellRows"></div>
+        </div>
+      </div>
+
+      <!-- SAR -->
+      <div id="uc-sar" class="uc-panel">
+        <div class="uc-ch">
+          <div class="uc-icon" style="background:#FCEBEB;">🔦</div>
+          <div>
+            <div class="uc-ctitle">Search &amp; rescue — team coordination</div>
+            <div class="uc-cdesc">Teams carry Azimuth devices across a search area. The incident commander sees all team positions on a live map, with distance and bearing to each team. SOS packets provide an emergency fallback if a team gets into difficulty.</div>
+          </div>
+        </div>
+        <div class="uc-body">
+          <div class="sar-stats">
+            <div class="sar-stat"><div class="sar-num">20</div><div class="sar-lbl">Max devices</div></div>
+            <div class="sar-stat"><div class="sar-num">10km+</div><div class="sar-lbl">LoRa range</div></div>
+            <div class="sar-stat"><div class="sar-num">AES‑128</div><div class="sar-lbl">Encrypted</div></div>
+            <div class="sar-stat"><div class="sar-num">SOS</div><div class="sar-lbl">Emergency tx</div></div>
+          </div>
+          <div id="ucSarTeams"></div>
+        </div>
+      </div>
+
+      <!-- FESTIVAL -->
+      <div id="uc-festival" class="uc-panel">
+        <div class="uc-ch">
+          <div class="uc-icon" style="background:var(--amber-bg);">⛺</div>
+          <div>
+            <div class="uc-ctitle">Festival campsite — find your crew</div>
+            <div class="uc-cdesc">Crowded field, no signal, dying batteries. Drop a GPS waypoint on your tent, share it over LoRa — your group navigates straight to you without burning mobile data or battery.</div>
+          </div>
+        </div>
+        <div class="uc-body">
+          <div class="fl-pills">
+            <span class="uc-badge ok">6 friends connected</span>
+            <span class="uc-badge warn">2 heading to camp</span>
+          </div>
+          <div class="fl-rows" id="ucFestRows"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="specs" id="specs">
+  <div class="container">
+    <div class="eyebrow reveal">Hardware</div>
+    <h2 class="sec-title reveal d1">Technical specification.</h2>
+    <div class="specs-grid">
+      <div class="reveal"><div class="sg-title">Processor</div><div class="si"><span class="sk">MCU</span><span class="sv">ESP32-S3</span></div><div class="si"><span class="sk">Cores</span><span class="sv">Dual LX7 240MHz</span></div><div class="si"><span class="sk">Flash</span><span class="sv">16MB</span></div><div class="si"><span class="sk">PSRAM</span><span class="sv">2MB</span></div></div>
+      <div class="reveal d1"><div class="sg-title">Radio</div><div class="si"><span class="sk">LoRa</span><span class="sv">SX1262</span></div><div class="si"><span class="sk">TX Power</span><span class="sv">14–22 dBm</span></div><div class="si"><span class="sk">Frequency</span><span class="sv">868 / 915MHz</span></div><div class="si"><span class="sk">Bluetooth</span><span class="sv">BLE 5.0</span></div></div>
+      <div class="reveal d2"><div class="sg-title">Sensors &amp; I/O</div><div class="si"><span class="sk">GPS</span><span class="sv">AT6558R</span></div><div class="si"><span class="sk">Display</span><span class="sv">0.96″ OLED 128×64</span></div><div class="si"><span class="sk">WiFi</span><span class="sv">802.11 b/g/n</span></div><div class="si"><span class="sk">Charging</span><span class="sv">USB-C</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="about" id="about">
+  <div class="container">
+    <div class="about-inner">
+      <div class="reveal">
+        <svg width="80" height="80" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="36" cy="36" r="32" stroke="var(--green)" stroke-width="2.5"/>
+          <circle cx="36" cy="36" r="20" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="2 3.5" opacity=".4"/>
+          <line x1="36" y1="4" x2="36" y2="16" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M 50 22 A 20 20 0 0 1 50 50" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+          <path d="M 56 15 A 30 30 0 0 1 56 57" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".4"/>
+          <circle cx="36" cy="36" r="3.5" fill="var(--green)"/>
+          <line x1="4" y1="36" x2="10" y2="36" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round" opacity=".5"/>
+          <line x1="36" y1="68" x2="36" y2="62" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round" opacity=".5"/>
+        </svg>
+        <div class="about-oeo">OEO</div>
+        <div class="about-tag">One Ear Open</div>
+      </div>
+      <div class="about-body reveal d1">
+        <p>OEO stands for <strong>One Ear Open</strong> — a personal nod to a narrow eustachian tube that means hearing well in only one ear. It became a philosophy: staying attuned, present and aware of your surroundings, even when the world is imperfect.</p>
+        <p>Azimuth started as a project to solve a real problem — keeping track of a group during long trail runs without relying on mobile signal. It's grown into a fully-featured GPS tracker with a companion web app, LoRa peer sharing, and more in active development.</p>
+        <p>OEO is also home to music. The same ethos — listening differently, building with intent, sharing openly — runs through everything we make. Everything is <strong>MIT licensed</strong> and on GitHub.</p>
+        <div class="pills">
+          <span class="pill">One Ear Open</span><span class="pill">MIT Licensed</span><span class="pill">ESP32 / Arduino</span><span class="pill">Web Bluetooth</span><span class="pill">LoRa 868MHz</span><span class="pill">No Cloud</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="oss">
+  <div class="container">
+    <div class="oss-inner">
+      <div class="reveal"><h2>Open source,<br><em>always.</em></h2><p>Fork it, build on it, sell it. The only ask is that you keep the copyright notice.</p></div>
+      <a href="https://github.com/oeo-technologies/azimuth" class="btn-ghost reveal d1">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="contact" id="contact">
+  <div class="container">
+    <div class="eyebrow reveal">Get in touch</div>
+    <h2 class="sec-title reveal d1" style="margin-bottom:48px;">Say hello.</h2>
+    <div class="contact-inner">
+      <form class="cf reveal" onsubmit="handleSubmit(event)" novalidate>
+        <div class="fr">
+          <div class="field"><label>Name</label><input type="text" placeholder="Your name" autocomplete="name"></div>
+          <div class="field"><label>Email</label><input type="email" placeholder="your@email.com" autocomplete="email"></div>
+        </div>
+        <div class="field"><label>Subject</label><select><option>General enquiry</option><option>Azimuth feedback</option><option>Hardware / build question</option><option>Collaboration</option><option>Other</option></select></div>
+        <div class="field"><label>Message</label><textarea placeholder="What's on your mind?"></textarea></div>
+        <button type="submit" class="btn-p" id="sub-btn" style="align-self:flex-start;">Send message →</button>
+      </form>
+      <div class="reveal d1">
+        <div class="ci"><div class="ci-icon"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div><div class="ci-title">Location</div><div class="ci-val">Cheshire, United Kingdom</div></div></div>
+        <div class="ci"><div class="ci-icon"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><div><div class="ci-title">Email</div><div class="ci-val">hello@oeo.dev</div></div></div>
+        <div class="ci"><div class="ci-icon"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg></div><div><div class="ci-title">GitHub</div><div class="ci-val">github.com/oeo-technologies</div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="fl">
+    <svg width="22" height="22" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+      <circle cx="36" cy="36" r="32" stroke="rgba(255,255,255,.28)" stroke-width="4"/>
+      <line x1="36" y1="4" x2="36" y2="17" stroke="rgba(255,255,255,.28)" stroke-width="4" stroke-linecap="round"/>
+      <path d="M 50 22 A 20 20 0 0 1 50 50" stroke="rgba(255,255,255,.32)" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      <circle cx="36" cy="36" r="4.5" fill="rgba(255,255,255,.28)"/>
+    </svg>
+    <span class="fn">OEO Technologies</span>
+  </div>
+  <span class="fc-copy">© 2026 OEO Technologies · MIT License</span>
+  <nav class="flinks" aria-label="Footer navigation">
+    <a href="features.html">Device &amp; App</a>
+    <a href="guide.html">Guide</a>
+    <a href="flash.html">Flash</a>
+    <a href="https://github.com/oeo-technologies/azimuth">GitHub</a>
+    <a href="#contact">Contact</a>
+  </nav>
+</footer>
+
+<script>
+const mob=document.getElementById('mob-btn'),menu=document.getElementById('mob-menu');
+function closeMob(){menu.style.display='none';mob.textContent='☰';mob.setAttribute('aria-expanded','false');}
+mob.addEventListener('click',()=>{const o=menu.style.display==='flex';menu.style.display=o?'none':'flex';mob.textContent=o?'☰':'✕';mob.setAttribute('aria-expanded',String(!o));});
+document.addEventListener('click',e=>{if(menu.style.display==='flex'&&!menu.contains(e.target)&&!mob.contains(e.target))closeMob();});
+const ro=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');ro.unobserve(e.target);}}),{threshold:0.08});
+document.querySelectorAll('.reveal').forEach(el=>ro.observe(el));
+setTimeout(()=>document.querySelectorAll('.hero .reveal').forEach(el=>el.classList.add('in')),80);
+let tick=0;
+setInterval(()=>{tick++;const s=document.getElementById('dspd');if(s)s.textContent=`SPD\u00a0 ${(12.4+Math.sin(tick*.3)*1.8).toFixed(1)} km/h`;const h=document.getElementById('dhdg');if(h)h.textContent=`HDG\u00a0 ${Math.floor(219+Math.sin(tick*.15)*8)}° SW`;},2000);
+/* ── USE CASES ── */
+function ucShow(id,btn){
+  document.querySelectorAll('.uc-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.uc-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('uc-'+id).classList.add('active');
+  btn.classList.add('active');
+  if(id==='hike')setTimeout(ucDrawHike,40);
+  if(id==='broadcast')ucBroadcast();
+  if(id==='fell')ucBuildFell();
+  if(id==='sar')ucBuildSar();
+  if(id==='festival')ucBuildFest();
+}
+function ucRR(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();}
+function ucDrawHike(){
+  const c=document.getElementById('ucHikeCanvas');
+  if(!c)return;
+  const dpr=window.devicePixelRatio||1,W=c.offsetWidth,H=260;
+  c.width=W*dpr;c.height=H*dpr;
+  const ctx=c.getContext('2d');ctx.scale(dpr,dpr);
+  const dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,dark?'#1a2e1e':'#dce8d4');bg.addColorStop(1,dark?'#141e16':'#c8ddc0');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle=dark?'rgba(109,184,127,0.1)':'rgba(61,102,71,0.12)';ctx.lineWidth=1;
+  for(let i=0;i<5;i++){ctx.beginPath();ctx.ellipse(W*.38,H*.42,70+i*22,40+i*14,.3,0,Math.PI*2);ctx.stroke();}
+  for(let i=0;i<4;i++){ctx.beginPath();ctx.ellipse(W*.7,H*.55,50+i*18,30+i*10,-.2,0,Math.PI*2);ctx.stroke();}
+  const pA=[[.1,.75],[.22,.52],[.36,.32],[.5,.28],[.65,.35],[.78,.42],[.92,.38]];
+  const pB=[[.12,.85],[.25,.72],[.38,.68],[.52,.7],[.65,.65],[.8,.6],[.92,.55]];
+  ctx.setLineDash([5,4]);
+  ctx.strokeStyle='rgba(61,102,71,0.55)';ctx.lineWidth=2;
+  ctx.beginPath();pA.forEach((p,i)=>i?ctx.lineTo(p[0]*W,p[1]*H):ctx.moveTo(p[0]*W,p[1]*H));ctx.stroke();
+  ctx.strokeStyle='rgba(56,118,200,0.45)';
+  ctx.beginPath();pB.forEach((p,i)=>i?ctx.lineTo(p[0]*W,p[1]*H):ctx.moveTo(p[0]*W,p[1]*H));ctx.stroke();
+  ctx.setLineDash([]);
+  const font='600 10px "Barlow",sans-serif';
+  function dev(px,py,label,col){
+    const x=px*W,y=py*H;
+    ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fillStyle=col+'28';ctx.fill();
+    ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle=dark?'#181614':'#fff';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle=dark?'#e0ddd6':'#2C2A1C';ctx.font=font;ctx.textAlign='center';
+    ctx.fillText(label,x,y-12);
+  }
+  [[.22,.52,'A1'],[.5,.28,'A2'],[.78,.42,'A3']].forEach(d=>dev(d[0],d[1],'AZ-'+d[2],'#3D6647'));
+  [[.25,.72,'B1'],[.52,.7,'B2'],[.8,.6,'B3']].forEach(d=>dev(d[0],d[1],'AZ-'+d[2],'#2971B0'));
+  const lx=12,ly=12,lw=136,lh=54;
+  ctx.fillStyle=dark?'rgba(24,22,20,0.9)':'rgba(244,241,235,0.92)';
+  ucRR(ctx,lx,ly,lw,lh,7);ctx.fill();
+  ctx.strokeStyle=dark?'#363330':'#D4CFC4';ctx.lineWidth=.8;ucRR(ctx,lx,ly,lw,lh,7);ctx.stroke();
+  ctx.beginPath();ctx.arc(lx+14,ly+17,4,0,Math.PI*2);ctx.fillStyle='#3D6647';ctx.fill();
+  ctx.fillStyle=dark?'#e0ddd6':'#1C1A17';ctx.font=font;ctx.textAlign='left';ctx.fillText('Group A — ridge',lx+23,ly+21);
+  ctx.beginPath();ctx.arc(lx+14,ly+37,4,0,Math.PI*2);ctx.fillStyle='#2971B0';ctx.fill();
+  ctx.fillText('Group B — valley',lx+23,ly+41);
+  ctx.fillStyle=dark?'rgba(24,22,20,0.88)':'rgba(244,241,235,0.9)';
+  ucRR(ctx,W-110,H-30,98,22,5);ctx.fill();
+  ctx.strokeStyle=dark?'#363330':'#D4CFC4';ctx.lineWidth=.6;ucRR(ctx,W-110,H-30,98,22,5);ctx.stroke();
+  ctx.fillStyle=dark?'#6B6760':'#888780';ctx.font='300 10px "Barlow",sans-serif';ctx.textAlign='center';
+  ctx.fillText('LoRa range: ~10km',W-61,H-15);
+}
+setTimeout(ucDrawHike,200);
+
+const ucBcNames=['Azimuth-Tom','Azimuth-Sarah','Azimuth-Mike','Azimuth-Priya','Azimuth-Dan','Azimuth-Chloe','Azimuth-Rob','Azimuth-Anika'];
+const ucBcLocs=['Summit ridge','Valley path','Car park','Lower fell','Stream crossing','West col','North slope','Base camp'];
+function ucBroadcast(){
+  const g=document.getElementById('ucBcGrid');if(!g)return;
+  g.innerHTML='';
+  ucBcNames.forEach((n,i)=>{
+    const d=document.createElement('div');d.className='bc-dev';d.id='ucbd-'+i;
+    d.innerHTML=`<div class="bc-dot"></div><div><div class="bc-name">${n}</div><div class="bc-st">${ucBcLocs[i]}</div></div>`;
+    g.appendChild(d);
+  });
+  [200,650,1100,1700,2400,3100,3900,4700].forEach((ms,i)=>{
+    setTimeout(()=>{
+      const c=document.getElementById('ucbd-'+i);
+      if(c){c.classList.add('got');c.querySelector('.bc-st').textContent='Received';}
+    },ms);
+  });
+}
+
+const ucFellData=[
+  {n:'CP 1 — Start',    loc:'Ambleside · 0km',    badge:'ok',  st:'Active · 28s ago'},
+  {n:'CP 2 — Kirkstone',loc:'3.2km',              badge:'ok',  st:'Active · 45s ago'},
+  {n:'CP 3 — Red Screes',loc:'6.8km',             badge:'ok',  st:'Active · 1m ago'},
+  {n:'CP 4 — Dove Crag', loc:'10.1km',            badge:'warn',st:'No signal 5m'},
+  {n:'CP 5 — High Street',loc:'13.5km',           badge:'ok',  st:'Active · 2m ago'},
+  {n:'CP 6 — Finish',   loc:'Ambleside · 18km',   badge:'ok',  st:'Active · 12s ago'},
+];
+const ucColors=['#3D6647','#2971B0','#8B6A2E','#A32D2D','#5A8E6A','#185FA5'];
+function ucBuildFell(){
+  const el=document.getElementById('ucFellRows');if(!el||el.children.length)return;
+  ucFellData.forEach((r,i)=>{
+    const row=document.createElement('div');row.className='fl-row';
+    row.innerHTML=`<div class="fl-av" style="background:${ucColors[i]}1A;color:${ucColors[i]}">${i+1}</div><div class="fl-name">${r.n}</div><div class="fl-loc">${r.loc}</div><span class="uc-badge ${r.badge}">${r.st}</span>`;
+    el.appendChild(row);
+  });
+}
+
+const ucSarData=[
+  {n:'Alpha team',m:'3 personnel · last seen 42s ago',col:'#3D6647',badge:'ok',st:'Active'},
+  {n:'Bravo team', m:'2 personnel · last seen 1m ago', col:'#2971B0',badge:'ok',st:'Active'},
+  {n:'Charlie team',m:'2 personnel · last seen 2m ago',col:'#8B6A2E',badge:'warn',st:'Slow terrain'},
+  {n:'Delta team', m:'2 personnel · last seen 4m ago', col:'#A32D2D',badge:'warn',st:'Check in soon'},
+];
+function ucBuildSar(){
+  const el=document.getElementById('ucSarTeams');if(!el||el.children.length)return;
+  ucSarData.forEach(t=>{
+    const row=document.createElement('div');row.className='sar-team';
+    row.innerHTML=`<div class="sar-pip" style="background:${t.col}"></div>
+    <div style="flex:1">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="sar-tn">${t.n}</span><span class="uc-badge ${t.badge}">${t.st}</span>
+      </div>
+      <div class="sar-ts">${t.m}</div>
+    </div>`;
+    el.appendChild(row);
+  });
+}
+
+const ucFestData=[
+  {n:'Azimuth-Jo',st:'At tent · waypoint set',badge:'ok',icon:'⛺'},
+  {n:'Azimuth-Marcus',st:'Heading to camp · 0.4km',badge:'warn',icon:'🚶'},
+  {n:'Azimuth-Priya',st:'Heading to camp · 0.9km',badge:'warn',icon:'🚶'},
+  {n:'Azimuth-Sam',st:'Stage 2 area',badge:'ok',icon:'🎵'},
+  {n:'Azimuth-Bex',st:'Food stalls',badge:'ok',icon:'🍔'},
+  {n:'Azimuth-Chris',st:'At tent',badge:'ok',icon:'⛺'},
+];
+function ucBuildFest(){
+  const el=document.getElementById('ucFestRows');if(!el||el.children.length)return;
+  ucFestData.forEach((f,i)=>{
+    const row=document.createElement('div');row.className='fl-row';
+    row.innerHTML=`<div class="fl-av" style="background:${ucColors[i]}1A;color:${ucColors[i]}">${f.icon}</div><div class="fl-name">${f.n}</div><div class="fl-loc" style="flex:1">${f.st}</div>`;
+    el.appendChild(row);
+  });
+}
+/* ── END USE CASES ── */
+function handleSubmit(e){e.preventDefault();const b=document.getElementById('sub-btn');b.textContent='Sent ✓';b.style.background='var(--green2)';setTimeout(()=>{b.textContent='Send message →';b.style.background='';},3000);}
+</script>
+</body>
+</html>
