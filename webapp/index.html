@@ -1086,6 +1086,7 @@ function cycleTileLayer() {
 let wpList = [];          // [{name, lat, lon}]
 let wpMarkers = [];       // Leaflet markers
 let wpTapMode = false;    // true = next map tap places a waypoint
+let wpAcks = {};          // {deviceId: wpCount} — ACK confirmations from peers
 
 function wpSetTapMode(on) {
   wpTapMode = on;
@@ -1163,6 +1164,7 @@ function wpRemove(i) {
 async function wpSendToGroup() {
   if (!setChar) { document.getElementById('wp-status').textContent = 'Not connected'; return; }
   if (wpList.length === 0) { document.getElementById('wp-status').textContent = 'No waypoints to send'; return; }
+  wpAcks = {};  // reset ACK list for new broadcast
   const payload = 'SETWP:' + JSON.stringify({ wps: wpList });
   try {
     await setChar.writeValueWithResponse(new TextEncoder().encode(payload));
@@ -1175,6 +1177,7 @@ async function wpSendToGroup() {
 
 async function wpClearAll() {
   wpList = [];
+  wpAcks = {};
   wpRenderList();
   wpRenderMarkers();
   if (setChar) {
@@ -2513,13 +2516,36 @@ function onPeerNotify(event) {
     }
 
     // ── Waypoint confirmation ──────────────────────────────────────────────
-    if (data.wps !== undefined) {
+    if (data.wps !== undefined && data.wpAck === undefined) {
       const el = document.getElementById('wp-status');
       if (el) {
         el.textContent = `Device confirmed ${data.wps} waypoint(s) ✓`;
         setTimeout(() => { if(el) el.textContent=''; }, 3000);
       }
       log(`Waypoints confirmed by device: ${data.wps}`, 'info');
+      return;
+    }
+
+    // ── Waypoint ACK from remote peer ─────────────────────────────────────
+    if (data.wpAck) {
+      const peerId = data.wpAck;
+      const wps    = data.wps;
+      // Find peer name
+      const peer   = loraPeers[peerId];
+      const name   = peer ? (peer.name || peerId) : peerId;
+      // Update ACK list in waypoint status
+      wpAcks[peerId] = wps;
+      const el = document.getElementById('wp-status');
+      if (el) {
+        const ackList = Object.entries(wpAcks).map(([id, n]) => {
+          const p = loraPeers[id];
+          const nm = p ? (p.name || id) : id;
+          return `${nm} ✓`;
+        }).join(' · ');
+        el.textContent = `Received by: ${ackList}`;
+      }
+      log(`WP ACK from ${name}: ${wps} waypoints confirmed`, 'info');
+      showToast(`📍 ${name} received waypoints`, 'ok');
       return;
     }
 
