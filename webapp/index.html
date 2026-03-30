@@ -396,7 +396,7 @@ main {
     <button id="menu-btn" title="Menu" onclick="toggleDrawer()" style="display:none;width:36px;height:36px;background:transparent;border:1px solid var(--border2);border-radius:8px;color:var(--muted);cursor:pointer;align-items:center;justify-content:center;position:relative;transition:border-color .15s,color .15s;flex-shrink:0;">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><line x1="2" y1="4.5" x2="14" y2="4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="11.5" x2="14" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       <span id="rec-pip" style="display:none;position:absolute;top:5px;right:5px;width:7px;height:7px;background:var(--danger);border-radius:50%;border:1.5px solid var(--surface);animation:pulse 1s infinite;"></span>
-      <span id="peer-count-pip" style="display:none;position:absolute;bottom:4px;right:4px;min-width:14px;height:14px;background:var(--accent);color:#fff;border-radius:7px;font-size:9px;font-weight:700;line-height:14px;text-align:center;padding:0 2px;font-family:var(--font);"></span>
+      <span id="peer-count-pip" style="display:none;position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;background:var(--accent);color:#fff;border-radius:8px;font-size:9px;font-weight:700;line-height:16px;text-align:center;padding:0 3px;font-family:var(--font);border:2px solid var(--surface);"></span>
     </button>
     <button id="peers-btn" style="display:none;"></button>
     <button id="settings-btn" style="display:none;"></button>
@@ -1471,7 +1471,7 @@ function wpRenderPanelList() {
   const queueList = document.getElementById('wayf-queue-list');
   const queueEmpty = document.getElementById('wayf-queue-empty');
   const queueCnt = document.getElementById('wayf-queue-count');
-  if (queueSection) queueSection.style.display = (wpQueued.length > 0 || wpSent.length > 0) ? 'block' : 'none';
+  if (queueSection) queueSection.style.display = wpQueued.length > 0 ? 'block' : 'none';
   if (queueList) {
     queueList.innerHTML = '';
     wpQueued.forEach((wp, i) => {

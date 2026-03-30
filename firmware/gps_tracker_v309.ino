@@ -1446,7 +1446,7 @@ void loraStoreMessage(const char* fromId, const char* fromName, const char* text
 
 // Parse an incoming LoRa packet — position or message
 void loraHandlePacket(uint8_t* buf, int len) {
-  if (len < 8) return;
+  if (len < 7) return;
 
   uint8_t magic = buf[0];
 
@@ -1589,6 +1589,13 @@ void loraHandlePacket(uint8_t* buf, int len) {
     if (i + LORA_NONCE_LEN > len) return;
     uint32_t nonce;
     memcpy(&nonce, buf + i, LORA_NONCE_LEN); i += LORA_NONCE_LEN;
+
+    // Deduplicate repeated broadcasts — same fromId + nonce = repeat, ignore
+    static char   lastMsgId[8]   = {0};
+    static uint32_t lastMsgNonce = 0;
+    if (strcmp(fromId, lastMsgId) == 0 && nonce == lastMsgNonce) return;
+    strncpy(lastMsgId, fromId, 7); lastMsgNonce = nonce;
+
     int payloadLen = len - i;
     uint8_t plain[72] = {0};
     loraCrypt(buf + i, plain, payloadLen, nonce);
