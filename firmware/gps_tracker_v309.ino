@@ -612,6 +612,8 @@ bool     wifiEnabled     = false;
 bool     wifiConnected   = false;
 bool     wifiScanPending   = false;  // async scan requested from BLE
 bool     wifiRefreshPending  = false; // async WiFi fetch requested from BLE
+bool     wpBroadcastPending  = false; // async waypoint broadcast requested from BLE
+char     wpPendingJson[512]  = {0};   // raw JSON held for main-loop parsing
 int      wifiLastFetchHour   = -1;    // hour of last successful fetch
 int      wifiLastFetchMin    = -1;    // minute of last successful fetch
 bool     weatherDetailActive = false; // true while long-pressing on weather page
@@ -1942,33 +1944,13 @@ class SetCharCB : public NimBLECharacteristicCallbacks {
       return;
 #endif // ENABLE_LORA
     } else if (val.find("SETWP:") == 0) {
-      // Set waypoints from web app: SETWP:{"wps":[{"name":"Summit","lat":53.4,"lon":-2.1},...]}
+      // Defer all JSON parsing to main loop to avoid BLE stack overflow
       String json = String(val.c_str()).substring(6);
-      StaticJsonDocument<1024> doc;
-      DeserializationError err = deserializeJson(doc, json);
-      if (!err && doc["wps"].is<JsonArray>()) {
-        JsonArray arr = doc["wps"].as<JsonArray>();
-        int n = 0;
-        for (JsonObject wp : arr) {
-          if (n >= WP_MAX) break;
-          waypoints[n].lat = wp["lat"] | 0.0f;
-          waypoints[n].lon = wp["lon"] | 0.0f;
-          const char* nm = wp["name"] | "";
-          strncpy(waypoints[n].name, nm, WP_NAME_LEN);
-          waypoints[n].name[WP_NAME_LEN] = 0;
-          n++;
-        }
-        waypointCount   = n;
-        waypointCurrent = 0;
-        waypointSave();
-        Serial.printf("[WP] Set %d waypoint(s) from BLE\n", waypointCount);
-        // Broadcast to all peers over LoRa
-        loraWaypointBroadcast();
-        // Confirm to web app
-        char resp[32];
-        snprintf(resp, sizeof(resp), "{\"wps\":%d}", waypointCount);
-        c->setValue(resp); c->notify();
-      }
+      strncpy(wpPendingJson, json.c_str(), sizeof(wpPendingJson) - 1);
+      wpPendingJson[sizeof(wpPendingJson) - 1] = 0;
+      wpBroadcastPending = true;
+      // Immediate ACK so web app doesn't time out
+      c->setValue("{\"wps\":-1}"); c->notify();
       return;
     } else if (val == "CLEARWP") {
       waypointClear();
@@ -3603,33 +3585,39 @@ void drawPageMessages() {
     return;
   }
 
-  // Show last 3 messages, newest first
+  // Show last 3 messages, newest first — each message: name row + one text row
+  // Available height: y=13 to y=53 = 40px, 3 messages × ~13px each
   int shown = 0;
   int y = 13;
-  for (int m = loraMsgCount - 1; m >= 0 && shown < 3; m--) {
+  for (int m = loraMsgCount - 1; m >= 0 && shown < 3 && y < 54; m--) {
     int slot = m % LORA_MAX_MSGS;
     if (!loraMsgs[slot].active) continue;
-    // Mark as read when page is viewed
     if (!loraMsgs[slot].read) {
       loraMsgs[slot].read = true;
       if (loraMsgUnread > 0) loraMsgUnread--;
     }
-    // From name truncated to 8 chars
-    char fromShort[9] = {0};
-    strncpy(fromShort, loraMsgs[slot].fromName[0] ? loraMsgs[slot].fromName : loraMsgs[slot].fromId, 8);
+    // From name — max 10 chars to leave room for colon
+    char fromShort[11] = {0};
+    const char* src = loraMsgs[slot].fromName[0] ? loraMsgs[slot].fromName : loraMsgs[slot].fromId;
+    strncpy(fromShort, src, 10);
+    // Name + colon on first line (max 128px wide at 6px/char = 21 chars)
     display.setCursor(0, y);
     display.print(fromShort);
     display.print(":");
-    y += 9;
-    // Message text — wrap at 21 chars
+    y += 8;
+    // Message text — truncate to 21 chars, show on second line indented
     char line[22] = {0};
     strncpy(line, loraMsgs[slot].text, 21);
     display.setCursor(4, y);
     display.println(line);
-    y += 10;
+    y += 9;
     shown++;
   }
   display.drawLine(0, 54, 127, 54, SSD1306_WHITE);
+  // Hint
+  char hint[20];
+  snprintf(hint, sizeof(hint), "%d msg%s", loraMsgCount, loraMsgCount>1?"s":"");
+  display.setCursor(2, 57); display.print(hint);
 }
 #endif
 
@@ -3661,8 +3649,8 @@ void oledDraw() {
   else if (currentPage==pageCompass())        drawPageCompass();
   else if (currentPage==pageTrack())          drawPageRoute();
   else if (currentPage==pageWaypoint()) {
-    if (locSaved)                             drawPageNavigate();
-    else                                      drawPageSaveLoc();
+    if (waypointCount > 0 || locSaved)   drawPageNavigate();
+    else                                  drawPageSaveLoc();
   }
   else if (currentPage==pageElevation())      drawPageElevation();
   else if (routeLogCount>0 && currentPage==pageRouteLog()) drawPageRouteLog();
@@ -4349,6 +4337,41 @@ void loop() {
     wifiRefreshPending = false;
     wifiConnectAndFetch();
     oledDraw();
+  }
+
+  // ── Async waypoint parse + broadcast ────────────────────────────────────
+  if (wpBroadcastPending) {
+    wpBroadcastPending = false;
+    // Parse JSON on main loop stack — safe from BLE stack overflow
+    DynamicJsonDocument doc(1024);
+    DeserializationError err = deserializeJson(doc, wpPendingJson);
+    if (!err && doc["wps"].is<JsonArray>()) {
+      JsonArray arr = doc["wps"].as<JsonArray>();
+      int n = 0;
+      for (JsonObject wp : arr) {
+        if (n >= WP_MAX) break;
+        waypoints[n].lat = wp["lat"] | 0.0f;
+        waypoints[n].lon = wp["lon"] | 0.0f;
+        const char* nm = wp["name"] | "";
+        strncpy(waypoints[n].name, nm, WP_NAME_LEN);
+        waypoints[n].name[WP_NAME_LEN] = 0;
+        n++;
+      }
+      waypointCount   = n;
+      waypointCurrent = 0;
+      waypointSave();
+      Serial.printf("[WP] Set %d waypoint(s) from BLE\n", waypointCount);
+      // Now safe to broadcast — we're on the main loop, not BLE stack
+      loraWaypointBroadcast();
+      // Notify web app with real count
+      if (bleConnected && clientSubscribed && sessionAuthorised && pSetChar) {
+        char resp[32];
+        snprintf(resp, sizeof(resp), "{\"wps\":%d}", waypointCount);
+        pSetChar->setValue(resp);
+        pSetChar->notify();
+      }
+    }
+    memset(wpPendingJson, 0, sizeof(wpPendingJson));
   }
 
   // ── Async WiFi scan ─────────────────────────────────────────────────────

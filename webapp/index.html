@@ -541,7 +541,7 @@ main {
       <input id="msg-text-input" type="text" maxlength="48" placeholder="Type a message…"
         style="flex:1;padding:5px 8px;background:var(--surface2);border:1px solid var(--border2);
                border-radius:6px;color:var(--text);font-family:var(--font);font-size:11px;"
-        onkeydown="if(event.key==='Enter') sendLoraMessage()"/>
+        onkeydown="if(event.key==='Enter'){event.preventDefault();sendLoraMessage()}"/>
       <button onclick="sendLoraMessage()"
         style="padding:5px 10px;background:var(--accent);border:none;border-radius:6px;
                color:#fff;font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;">Send</button>
@@ -2519,10 +2519,14 @@ function onPeerNotify(event) {
     if (data.wps !== undefined && data.wpAck === undefined) {
       const el = document.getElementById('wp-status');
       if (el) {
-        el.textContent = `Device confirmed ${data.wps} waypoint(s) ✓`;
-        setTimeout(() => { if(el) el.textContent=''; }, 3000);
+        if (data.wps === -1) {
+          el.textContent = 'Sending to group…';
+        } else {
+          el.textContent = `Device confirmed ${data.wps} waypoint(s) ✓`;
+          setTimeout(() => { if(el) el.textContent=''; }, 3000);
+        }
       }
-      log(`Waypoints confirmed by device: ${data.wps}`, 'info');
+      if (data.wps > 0) log(`Waypoints confirmed by device: ${data.wps}`, 'info');
       return;
     }
 
