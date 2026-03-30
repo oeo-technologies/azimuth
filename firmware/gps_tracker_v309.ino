@@ -259,6 +259,7 @@ uint32_t sosNextTxMs      = 0;
 #define  LORA_MAGIC_SOS    0xAE      // SOS magic byte
 #define  LORA_MAGIC_WP     0xAF      // waypoint broadcast
 #define  LORA_MAGIC_WP_ACK 0xB0      // waypoint acknowledgement
+#define  LORA_MAGIC_WP_CLR 0xB1      // waypoint clear broadcast
 
 // ── Waypoint system ──────────────────────────────────────────
 #define WP_MAX       10
@@ -613,6 +614,7 @@ bool     wifiConnected   = false;
 bool     wifiScanPending   = false;  // async scan requested from BLE
 bool     wifiRefreshPending  = false; // async WiFi fetch requested from BLE
 bool     wpBroadcastPending  = false; // async waypoint broadcast requested from BLE
+bool     wpClearPending      = false; // async waypoint clear broadcast requested from BLE
 char     wpPendingJson[512]  = {0};   // raw JSON held for main-loop parsing
 int      wifiLastFetchHour   = -1;    // hour of last successful fetch
 int      wifiLastFetchMin    = -1;    // minute of last successful fetch
@@ -1062,6 +1064,10 @@ void loadTimezone() {
   lastKnownLat = prefs.getDouble("gpsLat", 0.0);
   lastKnownLon = prefs.getDouble("gpsLon", 0.0);
   lastKnownAlt = prefs.getFloat("gpsAlt",  0.0);
+  // Restore saved pin (navigate waypoint)
+  savedLat = prefs.getDouble("pinLat", 0.0);
+  savedLon = prefs.getDouble("pinLon", 0.0);
+  locSaved = prefs.getBool("pinSaved", false) && (savedLat != 0.0 || savedLon != 0.0);
 #if ENABLE_LORA
   loraRegionIdx   = prefs.getUChar("loraRegion", 0);
   loraIntervalSec = prefs.getUShort("loraInterval", 30);
@@ -1363,6 +1369,16 @@ void loraWaypointBroadcast() {
   radio->startReceive();
 }
 
+void loraWaypointClearBroadcast() {
+  if (!loraReady || !radio) return;
+  uint8_t pkt[8] = {0};
+  pkt[0] = LORA_MAGIC_WP_CLR;
+  memcpy(pkt + 1, loraDeviceId, 6);
+  radio->transmit(pkt, 7);
+  Serial.println("[LORA] WP clear broadcast sent");
+  radio->startReceive();
+}
+
 void loraSOSBuild(uint8_t* pkt, int& len) {
   int i = 0;
   pkt[i++] = LORA_MAGIC_SOS;
@@ -1479,6 +1495,21 @@ void loraHandlePacket(uint8_t* buf, int len) {
         pPeerChar->setValue((uint8_t*)json, strlen(json));
         pPeerChar->notify();
       }
+    }
+    return;
+  }
+
+  // ── Waypoint clear ──────────────────────────────────────────────────────────
+  if (magic == LORA_MAGIC_WP_CLR) {
+    if (len < 7) return;
+    char fromId[8] = {0};
+    memcpy(fromId, buf + 1, 6); fromId[6] = 0;
+    if (strcmp(fromId, loraDeviceId) == 0) return; // own packet
+    waypointClear();
+    Serial.printf("[LORA] WP clear from %s — waypoints cleared\n", fromId);
+    if (bleConnected && clientSubscribed && sessionAuthorised && pPeerChar) {
+      pPeerChar->setValue("{\"wps\":0}");
+      pPeerChar->notify();
     }
     return;
   }
@@ -1954,8 +1985,22 @@ class SetCharCB : public NimBLECharacteristicCallbacks {
       return;
     } else if (val == "CLEARWP") {
       waypointClear();
+      wpClearPending = true;  // broadcast clear to all peers from main loop
       c->setValue("{\"wps\":0}"); c->notify();
       Serial.println("[WP] Waypoints cleared via BLE");
+      return;
+    } else if (val == "GETWP") {
+      // Return current waypoints as JSON
+      String json = "{\"wps\":[";
+      for (int i = 0; i < waypointCount; i++) {
+        if (i > 0) json += ",";
+        char entry[80];
+        snprintf(entry, sizeof(entry), "{\"name\":\"%s\",\"lat\":%.6f,\"lon\":%.6f}",
+          waypoints[i].name, waypoints[i].lat, waypoints[i].lon);
+        json += entry;
+      }
+      json += "]}";
+      c->setValue(json.c_str()); c->notify();
       return;
     }
   }
@@ -2885,34 +2930,33 @@ void drawPageNavigate() {
   // Left panel
   char buf[20];
   if (!hasTarget) {
-    display.setCursor(1,18); display.println("No waypoints");
-    display.setCursor(1,30); display.println("Set via app");
+    display.setCursor(1,12); display.println("No waypoints");
+    display.setCursor(1,24); display.println("Set via app");
   } else {
-    // Waypoint name (truncated to fit left panel ~9 chars at size 1)
+    // Waypoint name — y=4
     char shortName[10];
     strncpy(shortName, targetName, 9); shortName[9] = 0;
-    display.setCursor(1,10); display.println(shortName);
+    display.setCursor(1,4); display.println(shortName);
 
     if (dist >= 1000.0) snprintf(buf,sizeof(buf),"%.2f km",dist/1000.0);
     else                snprintf(buf,sizeof(buf),"%.0f m",dist);
 
     bool near = (dist < 20.0);
     if (near) {
-      display.fillRect(0,7,61,9,SSD1306_WHITE);
+      display.fillRect(0,10,61,9,SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
-    display.setCursor(1,10); display.println(buf);
+    display.setCursor(1,12); display.println(buf);
     if (near) display.setTextColor(SSD1306_WHITE);
 
-    display.setCursor(1,23); display.println(getCardinal(bearing));
+    display.setCursor(1,24); display.println(getCardinal(bearing));
     snprintf(buf,sizeof(buf),"%.0f deg",bearing);
-    display.setCursor(1,36); display.println(buf);
+    display.setCursor(1,33); display.println(buf);
   }
 
   // Bottom rule + hint
   display.drawLine(0,50,61,50,SSD1306_WHITE);
   if (isWaypoint) {
-    // Show wp index and cycle hint
     snprintf(buf,sizeof(buf),"%d/%d Hold:next",waypointCurrent+1,waypointCount);
     display.setCursor(1,54); display.println(buf);
   } else {
@@ -3761,20 +3805,24 @@ void handleButton() {
         oledDraw();
       } else if (locSaved && currentPage==pageSaveLoc()) {
         if (waypointCount > 0) {
-          // Cycle to next waypoint
           waypointCurrent = (waypointCurrent + 1) % waypointCount;
         } else {
-          // No shared waypoints — clear saved location
           locSaved=false; savedLat=0; savedLon=0;
+          prefs.begin("azimuth", false);
+          prefs.putBool("pinSaved", false);
+          prefs.end();
         }
         oledDraw();
       } else if (currentPage==pageSaveLoc()) {
         if (waypointCount > 0) {
-          // Cycle waypoints even without a saved location
           waypointCurrent = (waypointCurrent + 1) % waypointCount;
         } else if (cachedFix) {
-          // Fall back to marking current position
           savedLat=cachedLat; savedLon=cachedLon; locSaved=true;
+          prefs.begin("azimuth", false);
+          prefs.putDouble("pinLat", savedLat);
+          prefs.putDouble("pinLon", savedLon);
+          prefs.putBool("pinSaved", true);
+          prefs.end();
           display.clearDisplay();
           display.drawBitmap(56, 18, ICON_PIN, 8, 8, SSD1306_WHITE);
           display.setCursor(8, 36); display.println("Waypoint marked!");
@@ -4337,6 +4385,12 @@ void loop() {
     wifiRefreshPending = false;
     wifiConnectAndFetch();
     oledDraw();
+  }
+
+  // ── Async waypoint clear broadcast ──────────────────────────────────────
+  if (wpClearPending) {
+    wpClearPending = false;
+    loraWaypointClearBroadcast();
   }
 
   // ── Async waypoint parse + broadcast ────────────────────────────────────

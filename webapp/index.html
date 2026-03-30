@@ -251,13 +251,12 @@ main {
 /* ── Screen mirror bezel (settings > Screen tab) ── */
 .screen-bezel {
   background: #1a1a1a; border-radius: 8px; padding: 8px;
-  display: inline-flex; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-  width: 100%;
+  display: inline-block; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 .screen-inner {
   background: #000; border-radius: 3px; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
-  width: 100%;
+  display: block;
+  width: 256px; height: 128px;
 }
 
 /* ── Save toast ── */
@@ -991,7 +990,7 @@ main {
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--hint);margin-bottom:10px;">Screen Mirror</div>
       <div class="screen-bezel" style="margin-bottom:10px;">
         <div class="screen-inner">
-          <canvas id="screenshot-canvas" width="128" height="64"></canvas>
+          <canvas id="screenshot-canvas" width="256" height="128" style="display:block;"></canvas>
         </div>
       </div>
       <div style="display:flex;gap:8px;">
@@ -1372,7 +1371,7 @@ async function connectBLE() {
   try {
     bleDevice = await navigator.bluetooth.requestDevice({
       filters: [{ namePrefix: 'Azimuth' }],
-      optionalServices: [BLE_SERVICE, BLE_CHAR_ROUTE]
+      optionalServices: [BLE_SERVICE, BLE_CHAR_ROUTE, BLE_CHAR_SCRN]
     });
 
     bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
@@ -1407,7 +1406,8 @@ async function connectBLE() {
             scrnChar = await service.getCharacteristic(BLE_CHAR_SCRN);
             await scrnChar.startNotifications();
             scrnChar.oncharacteristicvaluechanged = onScrnChunk;
-          } catch(e) { /* optional characteristic */ }
+            log('Screen mirror ready', 'ok');
+          } catch(e) { log('Screen mirror unavailable: ' + e.message, 'warn'); scrnChar = null; }
           try {
             setChar = await service.getCharacteristic(BLE_CHAR_SET);
             await setChar.startNotifications();
@@ -1728,7 +1728,7 @@ function onSettingsNotify(event) {
         document.getElementById("pin-panel").style.display = "none";
         log("PIN verified — connected to " + (bleDevice ? bleDevice.name : "device"), "ok");
         if (bleDevice) { updateMarkerLabel(bleDevice.name); setDeviceName(bleDevice.name); }
-        // Now authorised — sync settings and name via resChar
+        // Now authorised — sync settings, name and waypoints via resChar
         setTimeout(async () => {
           if (!setChar) return;
           try {
@@ -1748,6 +1748,8 @@ function onSettingsNotify(event) {
                 setDeviceName(nr.name);
               }
             }
+            // Read saved waypoints from device
+            await setChar.writeValueWithResponse(new TextEncoder().encode("GETWP")).catch(()=>{});
           } catch(e) {}
         }, 300);
       } else {
@@ -1762,6 +1764,32 @@ function onSettingsNotify(event) {
     if (data.name !== undefined) {
       const displayName = data.name.startsWith('Azimuth-') ? data.name.substring(8) : data.name;
       setDeviceName(data.name);
+      return;
+    }
+
+    // Waypoints from device (GETWP response)
+    if (data.wps !== undefined && Array.isArray(data.wps)) {
+      if (data.wps.length > 0) {
+        wpList = data.wps.map(wp => ({
+          name: wp.name,
+          lat:  parseFloat(wp.lat),
+          lon:  parseFloat(wp.lon)
+        }));
+        wpRenderList();
+        wpRenderMarkers();
+        log(`Restored ${wpList.length} waypoint(s) from device`, 'ok');
+      }
+      return;
+    }
+
+    // Waypoint clear confirmation (wps:0)
+    if (data.wps === 0) {
+      wpList = [];
+      wpAcks = {};
+      wpRenderList();
+      wpRenderMarkers();
+      const el = document.getElementById('wp-status');
+      if (el) { el.textContent = 'Waypoints cleared'; setTimeout(()=>{ if(el) el.textContent=''; }, 2000); }
       return;
     }
 
@@ -2035,7 +2063,7 @@ function onScrnChunk(event) {
 }
 
 function renderOLED() {
-  const canvas = document.getElementById('oled-canvas');
+  const canvas = document.getElementById('screenshot-canvas');
   const ctx = canvas.getContext('2d');
   // Draw at 2x scale (256x128 canvas = 128x64 display * 2)
   const scale = 2;
@@ -2057,6 +2085,7 @@ function renderOLED() {
 
 async function captureScreen() {
   if (!routeChar) { log('Not connected', 'warn'); return; }
+  if (!scrnChar)  { log('Screen mirror not available on this device', 'warn'); return; }
   scrnChunksReceived = 0;
   setEl('scrn-status', 'text', 'Capturing…');
   const enc = new TextEncoder();
@@ -2064,7 +2093,7 @@ async function captureScreen() {
 }
 
 function downloadScreenshot() {
-  const canvas = document.getElementById('oled-canvas');
+  const canvas = document.getElementById('screenshot-canvas');
   // Create a larger version for download (4x = 512x256)
   const out = document.createElement('canvas');
   out.width = 512; out.height = 256;
