@@ -231,6 +231,7 @@ NimBLECharacteristic* pResChar   = nullptr;  // Settings/name results (read-only
 NimBLECharacteristic* pPeerChar  = nullptr;  // LoRa peer notify (read-only)
 bool bleConnected       = false;
 bool blePushLogPending  = false;  // push route log on next loop
+bool weatherReceived    = false;  // true once weather data is valid (WiFi or LoRa push)
 bool clientSubscribed = false;
 
 // LoRa globals
@@ -260,6 +261,7 @@ uint32_t sosNextTxMs      = 0;
 #define  LORA_MAGIC_WP     0xAF      // waypoint broadcast
 #define  LORA_MAGIC_WP_ACK 0xB0      // waypoint acknowledgement
 #define  LORA_MAGIC_WP_CLR 0xB1      // waypoint clear broadcast
+#define  LORA_MAGIC_WEATHER 0xB4     // weather push to specific device
 
 // ── Waypoint system ──────────────────────────────────────────
 #define WP_MAX       10
@@ -548,7 +550,7 @@ int pageTrack()       { return 2 + pageMsgsOffset(); }
 int pageWaypoint()    { return 3 + pageMsgsOffset(); }
 int pageElevation()   { return 4 + pageMsgsOffset(); }
 int pageRouteLog()    { return routeLogCount > 0 ? 5 + pageMsgsOffset() : -1; }
-int pageWeather()     { return wifiEnabled ? 5 + pageMsgsOffset() + pageLogOffset() : -1; }
+int pageWeather()     { return (wifiEnabled || weatherReceived) ? 5 + pageMsgsOffset() + pageLogOffset() : -1; }
 int pageClock()       { return 5 + pageMsgsOffset() + pageLogOffset() + pageWifiOffset(); }
 int pageCountdown()   { return 6 + pageMsgsOffset() + pageLogOffset() + pageWifiOffset(); }
 int pageStopwatch()   { return 7 + pageMsgsOffset() + pageLogOffset() + pageWifiOffset(); }
@@ -615,6 +617,10 @@ bool     wifiScanPending   = false;  // async scan requested from BLE
 bool     wifiRefreshPending  = false; // async WiFi fetch requested from BLE
 bool     wpBroadcastPending  = false; // async waypoint broadcast requested from BLE
 bool     wpClearPending      = false; // async waypoint clear broadcast requested from BLE
+bool     wxPushPending       = false; // async weather push requested from BLE
+char     wxPendingJson[256]  = {0};   // weather JSON held for main-loop parsing
+char     wxPendingPeerId[8]  = {0};   // peer ID to forward weather to via LoRa (empty = self only)
+bool     oledRedrawPending   = false; // request oledDraw() from main loop
 char     wpPendingJson[512]  = {0};   // raw JSON held for main-loop parsing
 int      wifiLastFetchHour   = -1;    // hour of last successful fetch
 int      wifiLastFetchMin    = -1;    // minute of last successful fetch
@@ -1379,6 +1385,43 @@ void loraWaypointClearBroadcast() {
   radio->startReceive();
 }
 
+void loraSendWeather(const char* toId) {
+  // Binary weather packet — compact and reliable
+  // [0xB4][fromId:6][toId:6][nonce:4][t_x10:2][f_x10:2][mn_x10:2][mx_x10:2][h:1][w_x10:2][id:2][desc:24]
+  // Total: 1+6+6+4+2+2+2+2+1+2+2+24 = 54 bytes
+  if (!loraReady || !radio || !weather.valid) return;
+  uint8_t pkt[64]; int i = 0;
+  pkt[i++] = LORA_MAGIC_WEATHER;
+  memcpy(pkt + i, loraDeviceId, 6); i += 6;
+  memcpy(pkt + i, toId, 6);         i += 6;
+  uint32_t nonce = (uint32_t)millis();
+  memcpy(pkt + i, &nonce, 4);       i += 4;
+  // Build binary payload
+  uint8_t plain[40] = {0}; int pi = 0;
+  int16_t t  = (int16_t)(weather.tempC      * 10);
+  int16_t f  = (int16_t)(weather.feelsLikeC * 10);
+  int16_t mn = (int16_t)(weather.tempMinC   * 10);
+  int16_t mx = (int16_t)(weather.tempMaxC   * 10);
+  int16_t w  = (int16_t)(weather.windKmh    * 10);
+  uint16_t id = (uint16_t)weather.weatherId;
+  uint8_t h   = (uint8_t)constrain(weather.humidity, 0, 100);
+  memcpy(plain + pi, &t,  2); pi += 2;
+  memcpy(plain + pi, &f,  2); pi += 2;
+  memcpy(plain + pi, &mn, 2); pi += 2;
+  memcpy(plain + pi, &mx, 2); pi += 2;
+  plain[pi++] = h;
+  memcpy(plain + pi, &w,  2); pi += 2;
+  memcpy(plain + pi, &id, 2); pi += 2;
+  strncpy((char*)(plain + pi), weather.desc, 23); plain[pi + 23] = 0; pi += 24;
+  loraCrypt(plain, pkt + i, pi, nonce); i += pi;
+  radio->clearDio1Action();
+  int state = radio->transmit(pkt, i);
+  radio->setDio1Action(loraRxISR);
+  radio->startReceive();
+  loraRxFlag = false;
+  Serial.printf("[LORA] Weather sent to %s: %.1fC %s (%d bytes)\n", toId, weather.tempC, weather.desc, i);
+}
+
 void loraSOSBuild(uint8_t* pkt, int& len) {
   int i = 0;
   pkt[i++] = LORA_MAGIC_SOS;
@@ -1447,7 +1490,6 @@ void loraStoreMessage(const char* fromId, const char* fromName, const char* text
 // Parse an incoming LoRa packet — position or message
 void loraHandlePacket(uint8_t* buf, int len) {
   if (len < 7) return;
-
   uint8_t magic = buf[0];
 
   // ── Waypoint packets ────────────────────────────────────────
@@ -1511,6 +1553,50 @@ void loraHandlePacket(uint8_t* buf, int len) {
       pPeerChar->setValue("{\"wps\":0}");
       pPeerChar->notify();
     }
+    return;
+  }
+
+  // ── Weather push (0xB4) ─────────────────────────────────────────────────────
+  if (magic == LORA_MAGIC_WEATHER) {
+    // Binary format: [0xB4][fromId:6][toId:6][nonce:4][encrypted binary payload]
+    if (len < 30) return;
+    int i = 1;
+    char fromId[8] = {0}; memcpy(fromId, buf + i, 6); fromId[6] = 0; i += 6;
+    char toId[8]   = {0}; memcpy(toId,   buf + i, 6); toId[6]   = 0; i += 6;
+    if (strcmp(toId, loraDeviceId) != 0) return;
+    if (strcmp(fromId, loraDeviceId) == 0) return;
+    uint32_t nonce; memcpy(&nonce, buf + i, 4); i += 4;
+    int payloadLen = len - i;
+    uint8_t plain[40] = {0};
+    loraCrypt(buf + i, plain, payloadLen, nonce);
+    // Unpack binary fields
+    int pi = 0;
+    int16_t t, f, mn, mx, w; uint16_t id; uint8_t h;
+    memcpy(&t,  plain + pi, 2); pi += 2;
+    memcpy(&f,  plain + pi, 2); pi += 2;
+    memcpy(&mn, plain + pi, 2); pi += 2;
+    memcpy(&mx, plain + pi, 2); pi += 2;
+    h = plain[pi++];
+    memcpy(&w,  plain + pi, 2); pi += 2;
+    memcpy(&id, plain + pi, 2); pi += 2;
+    weather.tempC       = t  / 10.0f;
+    weather.feelsLikeC  = f  / 10.0f;
+    weather.tempMinC    = mn / 10.0f;
+    weather.tempMaxC    = mx / 10.0f;
+    weather.windKmh     = w  / 10.0f;
+    weather.weatherId   = id;
+    weather.humidity    = h;
+    strncpy(weather.desc, (char*)(plain + pi), sizeof(weather.desc) - 1);
+    weather.desc[sizeof(weather.desc) - 1] = 0;
+    weather.valid = true; weatherReceived = true;
+    if (gps.time.isValid()) {
+      int fh, fm, fs, fd, fmo, fy;
+      getLocalTime(fh, fm, fs, fd, fmo, fy);
+      wifiLastFetchHour = fh;
+      wifiLastFetchMin  = fm;
+    }
+    Serial.printf("[LORA] Weather from %s: %.1fC %s\n", fromId, weather.tempC, weather.desc);
+    oledRedrawPending = true;
     return;
   }
 
@@ -1996,7 +2082,16 @@ class SetCharCB : public NimBLECharacteristicCallbacks {
       c->setValue("{\"wps\":0}"); c->notify();
       Serial.println("[WP] Waypoints cleared via BLE");
       return;
-    } else if (val == "GETWP") {
+    } else if (val == "GETOWM") {
+      // Return OWM key — only to authorised session, used by web app for weather push
+      char resp[64];
+      if (strlen(owmApiKey) > 0) {
+        snprintf(resp, sizeof(resp), "{\"owmKey\":\"%s\"}", owmApiKey);
+      } else {
+        snprintf(resp, sizeof(resp), "{\"owmKey\":\"\"}");
+      }
+      c->setValue(resp); c->notify();
+      return;
       // Return current waypoints as JSON
       String json = "{\"wps\":[";
       for (int i = 0; i < waypointCount; i++) {
@@ -2008,6 +2103,24 @@ class SetCharCB : public NimBLECharacteristicCallbacks {
       }
       json += "]}";
       c->setValue(json.c_str()); c->notify();
+      return;
+    } else if (val.find("SETWX:") == 0) {
+      // Weather push from web app: SETWX:<peerId>:<json>  or  SETWX:self:<json>
+      // Defer JSON parsing to main loop — same pattern as SETWP
+      String rest = String(val.c_str()).substring(6);
+      int sep = rest.indexOf(':');
+      if (sep < 0) return;
+      String peerId = rest.substring(0, sep);
+      String json   = rest.substring(sep + 1);
+      if (peerId == "self") {
+        memset(wxPendingPeerId, 0, sizeof(wxPendingPeerId));
+      } else {
+        strncpy(wxPendingPeerId, peerId.c_str(), sizeof(wxPendingPeerId) - 1);
+        wxPendingPeerId[sizeof(wxPendingPeerId) - 1] = 0;
+      }
+      strncpy(wxPendingJson, json.c_str(), sizeof(wxPendingJson) - 1);
+      wxPendingJson[sizeof(wxPendingJson) - 1] = 0;
+      wxPushPending = true;
       return;
     }
   }
@@ -2263,7 +2376,7 @@ bool fetchWeather() {
   int deg = doc["wind"]["deg"];
   const char* dirs[] = {"N","NE","E","SE","S","SW","W","NW","N"};
   strlcpy(weather.windDir, dirs[(int)((deg + 22.5f) / 45.0f) % 8], sizeof(weather.windDir));
-  weather.valid = true;
+  weather.valid = true; weatherReceived = true;
   Serial.printf("[WIFI] Weather: %.1fC %s\n", weather.tempC, weather.desc);
   return true;
 }
@@ -3705,7 +3818,7 @@ void oledDraw() {
   }
   else if (currentPage==pageElevation())      drawPageElevation();
   else if (routeLogCount>0 && currentPage==pageRouteLog()) drawPageRouteLog();
-  else if (wifiEnabled && currentPage==pageWeather()) {
+  else if (weather.valid && currentPage==pageWeather()) {
     if (weatherDetailActive) drawPageWifi();
     else                     drawPageWeatherSimple();
   }
@@ -3760,7 +3873,7 @@ void handleButton() {
         // the next oledDraw() will show the position page automatically
         currentPage = 0;
         oledDraw();
-      } else if (wifiEnabled && currentPage==pageWeather()) {
+      } else if (weather.valid && currentPage==pageWeather()) {
         weatherDetailActive = true;
         oledDraw();
       } else if (currentPage==pageCompass()) {
@@ -4336,7 +4449,7 @@ void loop() {
                         : (currentPage==0 && !cachedFix) ? 300
                         : bleConnected ? 2000 : 1000;
   // Compass and navigate refresh faster
-  if (currentPage==pageCompass() || (currentPage==pageWaypoint()) || (wifiEnabled && currentPage==pageWeather())) oledInterval = 500;
+  if (currentPage==pageCompass() || (currentPage==pageWaypoint()) || (weather.valid && currentPage==pageWeather())) oledInterval = 500;
 
   if (now - lastOledUpdate >= oledInterval) {
     lastOledUpdate = now;
@@ -4379,7 +4492,7 @@ void loop() {
   }
 
   // Screen timeout
-  if (screenOn && currentPage!=pageCompass() && !(locSaved && currentPage==pageWaypoint()) && !(wifiEnabled && currentPage==pageWeather())) {
+  if (screenOn && currentPage!=pageCompass() && !(locSaved && currentPage==pageWaypoint()) && !(weather.valid && currentPage==pageWeather())) {
     if (millis() - lastActivityMs >= timeoutMs()) {
       display.ssd1306_command(SSD1306_DISPLAYOFF);
       screenOn = false;
@@ -4387,6 +4500,12 @@ void loop() {
   }
 
   // BLE notify
+  // ── Async OLED redraw ────────────────────────────────────────────────────
+  if (oledRedrawPending) {
+    oledRedrawPending = false;
+    oledDraw();
+  }
+
   // ── Async WiFi refresh ──────────────────────────────────────────────────
   if (wifiRefreshPending) {
     wifiRefreshPending = false;
@@ -4435,7 +4554,41 @@ void loop() {
     memset(wpPendingJson, 0, sizeof(wpPendingJson));
   }
 
-  // ── Async WiFi scan ─────────────────────────────────────────────────────
+  // ── Async weather push from BLE ─────────────────────────────────────────
+  if (wxPushPending) {
+    wxPushPending = false;
+    StaticJsonDocument<320> doc;
+    if (deserializeJson(doc, wxPendingJson) == DeserializationError::Ok) {
+      // Always apply to own weather struct
+      weather.tempC       = doc["t"]  | 0.0f;
+      weather.feelsLikeC  = doc["f"]  | 0.0f;
+      weather.tempMinC    = doc["mn"] | 0.0f;
+      weather.tempMaxC    = doc["mx"] | 0.0f;
+      weather.humidity    = doc["h"]  | 0;
+      weather.windKmh     = doc["w"]  | 0.0f;
+      weather.windGustKmh = doc["g"]  | 0.0f;
+      weather.weatherId   = doc["id"] | 0;
+      strlcpy(weather.windDir,     doc["wd"] | "?", sizeof(weather.windDir));
+      strlcpy(weather.desc,        doc["d"]  | "",  sizeof(weather.desc));
+      strlcpy(weather.locationName,doc["loc"]| "",  sizeof(weather.locationName));
+      weather.valid = true; weatherReceived = true;
+      if (gps.time.isValid()) {
+        int fh, fm, fs, fd, fmo, fy;
+        getLocalTime(fh, fm, fs, fd, fmo, fy);
+        wifiLastFetchHour = fh;
+        wifiLastFetchMin  = fm;
+      }
+      Serial.printf("[WX] Weather set via BLE: %.1fC %s\n", weather.tempC, weather.desc);
+      oledDraw();
+      // If a peer ID is specified, forward via LoRa
+      if (strlen(wxPendingPeerId) == 6) {
+        loraSendWeather(wxPendingPeerId);
+        yield();
+      }
+    }
+    memset(wxPendingJson,  0, sizeof(wxPendingJson));
+    memset(wxPendingPeerId,0, sizeof(wxPendingPeerId));
+  }
   if (wifiScanPending) {
     wifiScanPending = false;
     Serial.println("[WIFI] Scanning networks...");
@@ -4557,13 +4710,14 @@ void loop() {
 
   if (loraReady && radio && loraRxFlag) {
     loraRxFlag = false;
-    uint8_t buf[64];
+    uint8_t buf[128];
     int state = radio->readData(buf, sizeof(buf));
     if (state == RADIOLIB_ERR_NONE) {
       int len = radio->getPacketLength();
       loraHandlePacket(buf, len);
     }
     radio->startReceive();
+    yield();
   }
   static uint32_t lastPeerExpiry = 0;
   if (now - lastPeerExpiry >= 30000UL) {

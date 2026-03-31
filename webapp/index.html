@@ -1604,6 +1604,85 @@ let loraRegionIdx   = 0;
 let loraIntervalSec = 30;
 let peerPanelOpen = false;
 
+// ── Weather push system ───────────────────────────────────────────────────────
+const WX_REFRESH_MS  = 10 * 60 * 1000; // 10 minutes between refreshes per device
+const WX_API_BASE    = 'https://api.openweathermap.org/data/2.5/weather';
+let wxLastFetch = {};    // { deviceId: timestamp } — throttle per device
+let wxOwmKey    = '';    // OWM API key — set from wifi panel input
+let wxInterval  = null;  // setInterval handle
+
+function wxGetOwmKey() {
+  // Prefer the input field value, fall back to stored key
+  const el = document.getElementById('owm-key');
+  return (el && el.value.trim()) ? el.value.trim() : wxOwmKey;
+}
+
+async function wxFetchAndPush(deviceId, lat, lon) {
+  const key = wxGetOwmKey();
+  if (!key) return;
+  if (!setChar) return;
+  // Throttle — don't fetch more than once per WX_REFRESH_MS per device
+  const now = Date.now();
+  if (wxLastFetch[deviceId] && (now - wxLastFetch[deviceId]) < WX_REFRESH_MS) return;
+  wxLastFetch[deviceId] = now;
+  try {
+    const url = `${WX_API_BASE}?lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}&appid=${key}&units=metric`;
+    const resp = await fetch(url);
+    if (!resp.ok) { log(`Weather fetch failed for ${deviceId}: ${resp.status}`, 'warn'); return; }
+    const d = await resp.json();
+    // Build compact payload matching firmware expectation
+    const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+    const wd = dirs[Math.round((d.wind?.deg || 0) / 45) % 8];
+    const payload = {
+      t:   parseFloat((d.main?.temp        || 0).toFixed(1)),
+      f:   parseFloat((d.main?.feels_like  || 0).toFixed(1)),
+      mn:  parseFloat((d.main?.temp_min    || 0).toFixed(1)),
+      mx:  parseFloat((d.main?.temp_max    || 0).toFixed(1)),
+      h:   d.main?.humidity     || 0,
+      w:   parseFloat(((d.wind?.speed || 0) * 3.6).toFixed(1)),
+      g:   parseFloat(((d.wind?.gust  || 0) * 3.6).toFixed(1)),
+      wd:  wd,
+      id:  d.weather?.[0]?.id   || 0,
+      d:   (d.weather?.[0]?.description || '').substring(0, 23),
+      loc: (d.name || '').substring(0, 23)
+    };
+    const json = JSON.stringify(payload);
+    const cmd  = deviceId === 'self'
+      ? `SETWX:self:${json}`
+      : `SETWX:${deviceId}:${json}`;
+    await setChar.writeValueWithResponse(new TextEncoder().encode(cmd));
+    log(`Weather pushed to ${deviceId === 'self' ? 'device' : deviceId}: ${payload.t}°C ${payload.d}`, 'ok');
+  } catch(e) {
+    log(`Weather push error: ${e.message}`, 'warn');
+  }
+}
+
+function wxPushAll() {
+  if (!setChar || !wxGetOwmKey()) return;
+  // Push to connected device using its own GPS position
+  if (lastData && lastData.lat && lastData.fix) {
+    wxFetchAndPush('self', lastData.lat, lastData.lon);
+  }
+  // Push to each peer using their last known position
+  Object.entries(loraPeers).forEach(([id, p]) => {
+    if (p.lat && p.lon && (Date.now() - p.ts) < LORA_EXPIRE_MS) {
+      wxFetchAndPush(id, p.lat, p.lon);
+    }
+  });
+}
+
+function wxStartInterval() {
+  if (wxInterval) clearInterval(wxInterval);
+  wxInterval = setInterval(wxPushAll, WX_REFRESH_MS);
+  // Push immediately on connect
+  setTimeout(wxPushAll, 3000);
+}
+
+function wxStopInterval() {
+  if (wxInterval) { clearInterval(wxInterval); wxInterval = null; }
+  wxLastFetch = {};
+}
+
 
 // ── Map tile switcher ────────────────────────────────────────────────────
 const tileSets = [
@@ -2081,6 +2160,7 @@ function onDisconnected() {
   resChar = null;
   peerChar = null;
   loraPeers = {};       // reset peers each session
+  wxStopInterval();     // stop weather push interval
   updatePeerPanel();
   clearTimeout(staleTimer);  // stop stale watchdog
   updateMarkerLabel(null);   // clear device name from marker
@@ -2312,6 +2392,19 @@ function onSettingsNotify(event) {
       return;
     }
 
+    // OWM key returned from device on connect
+    if (data.owmKey !== undefined) {
+      if (data.owmKey) {
+        wxOwmKey = data.owmKey;
+        const el = document.getElementById('owm-key');
+        if (el) el.value = data.owmKey;
+        log('OWM API key loaded from device', 'ok');
+      } else {
+        log('No OWM API key set on device — enter one in WiFi & weather', 'warn');
+      }
+      return;
+    }
+
     // PIN verification response
     if (data.auth !== undefined) {
       if (data.auth === 1) {
@@ -2341,7 +2434,11 @@ function onSettingsNotify(event) {
             }
             // Read saved waypoints from device
             await setChar.writeValueWithResponse(new TextEncoder().encode("GETWP")).catch(()=>{});
+            // Read OWM key so web app can push weather without user re-entering it
+            await setChar.writeValueWithResponse(new TextEncoder().encode("GETOWM")).catch(()=>{});
           } catch(e) {}
+          // Start weather push interval
+          wxStartInterval();
         }, 300);
       } else {
         document.getElementById("pin-error").style.color = "var(--danger)";
@@ -2589,7 +2686,7 @@ async function saveOWMKey() {
   if (!setChar) { log("Not connected", "warn"); return; }
   const key = document.getElementById("owm-key").value.trim();
   if (!key) { log("Please enter an API key", "warn"); return; }
-  // Send just the key — use SETOWM command
+  wxOwmKey = key;  // store locally for weather push
   await setChar.writeValueWithResponse(new TextEncoder().encode("SETOWM:" + key)).catch(()=>{});
   log("API key saved to device", "ok");
 }
@@ -3202,7 +3299,13 @@ function onPeerNotify(event) {
     updatePeerCountPip();
 
     // Toast for new peer
-    if (isNew) showToast(`${data.name || id} is in range`, '📡');
+    if (isNew) {
+      showToast(`${data.name || id} is in range`, '📡');
+      // Push weather to new peer if we have their position and an OWM key
+      if (data.lat && data.lon && wxGetOwmKey()) {
+        setTimeout(() => wxFetchAndPush(id, data.lat, data.lon), 2000);
+      }
+    }
     log(`Azimuth peer: ${data.name || id}`, 'ok');
   } catch(e) {}
 }
@@ -3730,7 +3833,7 @@ try { document.getElementById('capture-btn').onclick       = captureScreen; } ca
 try { document.getElementById('save-png-btn').onclick      = downloadScreenshot; } catch(e) {}
 try { document.getElementById('apply-settings-btn').onclick = applySettings; } catch(e) {}
 try { document.getElementById('save-wifi-btn').onclick     = saveWifiConfig; } catch(e) {}
-try { document.getElementById('wifi-refresh-btn').onclick  = wifiRefresh; } catch(e) {}
+try { document.getElementById('wifi-refresh-btn').onclick = () => { wxLastFetch = {}; wxPushAll(); }; } catch(e) {}
 try { document.getElementById('lora-save-btn').onclick     = saveLoraSettings; } catch(e) {}
 try { document.getElementById('scan-btn').onclick          = scanNetworks; } catch(e) {}
 try { document.getElementById('pin-cancel-btn').onclick    = cancelPin; } catch(e) {}
