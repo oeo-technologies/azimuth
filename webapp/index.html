@@ -1253,6 +1253,22 @@ body.wifi-mode {
       </div>
       <span class="az-menu-arrow">›</span>
     </div>
+
+    <div class="az-menu-item ble-only-item" onclick="openPanel('panel-offlinemaps')">
+      <div class="az-menu-icon" style="background:#EAF3F1;">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M2 4l5 2 4-2 5 2v10l-5-2-4 2-5-2V4z" stroke="#2A6B5A" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M7 6v10M11 4v10" stroke="#2A6B5A" stroke-width="1.2" stroke-linecap="round"/>
+          <circle cx="13.5" cy="11.5" r="2.5" fill="#2A6B5A" opacity=".15" stroke="#2A6B5A" stroke-width="1.2"/>
+          <path d="M13.5 10.5v1l.7.7" stroke="#2A6B5A" stroke-width="1" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="az-menu-info">
+        <div class="az-menu-name">Offline Maps</div>
+        <div class="az-menu-desc" id="menu-offlinemaps-desc">No area cached</div>
+      </div>
+      <span class="az-menu-arrow">›</span>
+    </div>
   </div>
   <!-- Theme toggle as last menu item — WiFi mode only -->
   <div class="az-menu-item" id="wifi-theme-footer" style="display:none;" onclick="wifiThemeToggle()">
@@ -1791,6 +1807,50 @@ body.wifi-mode {
       <button id="capture-btn" style="flex:1;padding:9px;background:transparent;border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:12px;cursor:pointer;">Capture</button>
       <button id="save-png-btn" style="flex:1;padding:9px;background:transparent;border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:12px;cursor:pointer;">Save PNG</button>
     </div>
+  </div>
+</div>
+
+<div id="panel-offlinemaps" class="az-panel">
+  <div class="az-panel-hdr">
+    <button class="az-back-btn" onclick="openPanel('panel-main')">&#x2039;</button>
+    <div class="az-panel-title">Offline Maps</div>
+  </div>
+  <div class="az-panel-body" style="padding:14px 16px;">
+    <div id="omap-status-card" style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:12px;font-weight:600;color:var(--text);">Cached tiles</span>
+        <span id="omap-tile-count" style="font-size:11px;color:var(--muted);">Checking…</span>
+      </div>
+      <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:6px;">
+        <div id="omap-storage-bar" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width .4s;"></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span id="omap-storage-used" style="font-size:10px;color:var(--muted);">0 MB used</span>
+        <button id="omap-clear-btn" onclick="omapClearCache()" style="font-size:10px;color:var(--danger);background:none;border:none;cursor:pointer;padding:0;font-family:var(--font);">Clear cache</button>
+      </div>
+    </div>
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--hint);margin-bottom:8px;">Download area</div>
+    <div style="margin-bottom:10px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Centre on my current location and cache:</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;" id="omap-radius-btns">
+        <button onclick="omapSelectRadius(this,10)" data-km="10" style="padding:8px 4px;border:1.5px solid var(--border2);border-radius:8px;background:transparent;color:var(--text);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font);">10 km<br><span style="font-size:9px;color:var(--hint);">~8 MB</span></button>
+        <button onclick="omapSelectRadius(this,25)" data-km="25" style="padding:8px 4px;border:1.5px solid var(--accent);border-radius:8px;background:var(--accent-bg);color:var(--accent);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font);">25 km<br><span style="font-size:9px;">~20 MB</span></button>
+        <button onclick="omapSelectRadius(this,50)" data-km="50" style="padding:8px 4px;border:1.5px solid var(--border2);border-radius:8px;background:transparent;color:var(--text);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font);">50 km<br><span style="font-size:9px;color:var(--hint);">~60 MB</span></button>
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--hint);margin-bottom:14px;">Zoom levels 8–14 · Roads, paths, place names</div>
+    <button id="omap-download-btn" onclick="omapStartDownload()" style="width:100%;padding:11px;background:var(--accent);border:none;border-radius:9px;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:12px;">Download area</button>
+    <div id="omap-progress-section" style="display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:11px;color:var(--text);" id="omap-progress-label">Downloading…</span>
+        <span style="font-size:11px;color:var(--muted);" id="omap-progress-pct">0%</span>
+      </div>
+      <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:8px;">
+        <div id="omap-progress-bar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width .2s;"></div>
+      </div>
+      <button onclick="omapCancelDownload()" style="width:100%;padding:8px;background:transparent;border:1px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:12px;cursor:pointer;">Cancel</button>
+    </div>
+    <div style="font-size:10px;color:var(--hint);line-height:1.5;border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">Tiles are cached in your browser. Connect to the internet before downloading. Cached maps work offline when connected to the device hotspot.</div>
   </div>
 </div>
 
@@ -5840,6 +5900,167 @@ if (typeof L !== 'undefined' && L.noOffline) {
 // Start phone GPS immediately — shows position on map before device connects
 phoneGpsStart();
 // Auto-start WiFi mode if served from device AP
+// ── Offline Maps ─────────────────────────────────────────────────────────────
+let omapSelectedKm = 25;
+let omapDownloading = false;
+let omapCancelled = false;
+
+function omapSelectRadius(btn, km) {
+  omapSelectedKm = km;
+  document.querySelectorAll('#omap-radius-btns button').forEach(b => {
+    const selected = b === btn;
+    b.style.borderColor  = selected ? 'var(--accent)' : 'var(--border2)';
+    b.style.background   = selected ? 'var(--accent-bg)' : 'transparent';
+    b.style.color        = selected ? 'var(--accent)' : 'var(--text)';
+  });
+}
+
+// Convert lat/lon + radius to tile coords for a given zoom
+function omapTilesForRegion(lat, lon, radiusKm, minZ, maxZ) {
+  const tiles = [];
+  for (let z = minZ; z <= maxZ; z++) {
+    // Bounding box in tile coords
+    const latR = radiusKm / 111.32;
+    const lonR = radiusKm / (111.32 * Math.cos(lat * Math.PI / 180));
+    const x0 = lon2tile(lon - lonR, z);
+    const x1 = lon2tile(lon + lonR, z);
+    const y0 = lat2tile(lat + latR, z);
+    const y1 = lat2tile(lat - latR, z);
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        tiles.push({ z, x, y });
+      }
+    }
+  }
+  return tiles;
+}
+
+function lon2tile(lon, z) { return Math.floor((lon + 180) / 360 * Math.pow(2, z)); }
+function lat2tile(lat, z) { return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z)); }
+
+function omapGetTileTemplate() {
+  // Get current tile layer URL template from Leaflet map
+  try {
+    const layers = [];
+    map.eachLayer(l => { if (l._url) layers.push(l._url); });
+    if (layers.length) return layers[0];
+  } catch {}
+  return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+}
+
+async function omapStartDownload() {
+  if (omapDownloading) return;
+  if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+    log('Service worker not ready — reload the app first', 'warn');
+    return;
+  }
+  // Need current position
+  const lat = lastData && lastData.lat;
+  const lon = lastData && lastData.lon;
+  if (!lat || !lon) {
+    log('No GPS position — connect to device first', 'warn');
+    showToast('No GPS position yet', '⚠');
+    return;
+  }
+
+  omapDownloading = true;
+  omapCancelled = false;
+
+  const tiles = omapTilesForRegion(lat, lon, omapSelectedKm, 8, 14);
+  const MAX_TILES = 8000;
+  const limited = tiles.slice(0, MAX_TILES);
+
+  document.getElementById('omap-download-btn').style.display = 'none';
+  document.getElementById('omap-progress-section').style.display = 'block';
+  document.getElementById('omap-progress-label').textContent = `Downloading ${limited.length.toLocaleString()} tiles…`;
+  document.getElementById('omap-progress-pct').textContent = '0%';
+  document.getElementById('omap-progress-bar').style.width = '0%';
+
+  log(`Offline maps: queuing ${limited.length} tiles (${omapSelectedKm}km radius, z8–14)`, 'ok');
+
+  // Listen for progress messages from SW
+  const handler = e => {
+    if (omapCancelled) return;
+    const { type, done, total, failed } = e.data;
+    if (type === 'TILE_PROGRESS' || type === 'TILE_DOWNLOAD_COMPLETE') {
+      const pct = Math.round(done / total * 100);
+      document.getElementById('omap-progress-bar').style.width = pct + '%';
+      document.getElementById('omap-progress-pct').textContent = pct + '%';
+      if (type === 'TILE_DOWNLOAD_COMPLETE') {
+        navigator.serviceWorker.removeEventListener('message', handler);
+        omapDownloading = false;
+        document.getElementById('omap-progress-section').style.display = 'none';
+        document.getElementById('omap-download-btn').style.display = 'block';
+        const failStr = failed > 0 ? ` (${failed} failed)` : '';
+        log(`Offline maps: ${done} tiles cached${failStr}`, 'ok');
+        showToast(`Map cached · ${omapSelectedKm}km area`, '🗺');
+        omapRefreshStatus();
+      }
+    }
+  };
+  navigator.serviceWorker.addEventListener('message', handler);
+
+  navigator.serviceWorker.controller.postMessage({
+    type: 'DOWNLOAD_TILES',
+    tiles: limited,
+    tileUrlTemplate: omapGetTileTemplate()
+  });
+}
+
+function omapCancelDownload() {
+  omapCancelled = true;
+  omapDownloading = false;
+  document.getElementById('omap-progress-section').style.display = 'none';
+  document.getElementById('omap-download-btn').style.display = 'block';
+  log('Offline map download cancelled', 'warn');
+}
+
+async function omapClearCache() {
+  if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+  const handler = e => {
+    if (e.data.type === 'TILES_CLEARED') {
+      navigator.serviceWorker.removeEventListener('message', handler);
+      omapRefreshStatus();
+      log('Offline map cache cleared', 'ok');
+      showToast('Map cache cleared', '🗑');
+    }
+  };
+  navigator.serviceWorker.addEventListener('message', handler);
+  navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_TILES' });
+}
+
+function omapRefreshStatus() {
+  if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+    const el = document.getElementById('omap-tile-count');
+    if (el) el.textContent = 'Not available';
+    return;
+  }
+  const handler = e => {
+    if (e.data.type === 'TILE_CACHE_SIZE_RESULT') {
+      navigator.serviceWorker.removeEventListener('message', handler);
+      const { bytes, count } = e.data.size;
+      const mb = (bytes / 1024 / 1024).toFixed(1);
+      const el = document.getElementById('omap-tile-count');
+      const used = document.getElementById('omap-storage-used');
+      const bar = document.getElementById('omap-storage-bar');
+      const desc = document.getElementById('menu-offlinemaps-desc');
+      if (el) el.textContent = count > 0 ? `${count.toLocaleString()} tiles` : 'None';
+      if (used) used.textContent = count > 0 ? `${mb} MB used` : '0 MB used';
+      if (bar) bar.style.width = Math.min(count / 5000 * 100, 100) + '%';
+      if (desc) desc.textContent = count > 0 ? `${mb} MB cached` : 'No area cached';
+    }
+  };
+  navigator.serviceWorker.addEventListener('message', handler);
+  navigator.serviceWorker.controller.postMessage({ type: 'TILE_CACHE_SIZE' });
+}
+
+// Refresh offline maps status when panel is opened — hook into openPanel
+const _omapOrigOpen = openPanel;
+openPanel = function(id) {
+  _omapOrigOpen(id);
+  if (id === 'panel-offlinemaps') omapRefreshStatus();
+};
+
 if (isWifiMode) { setTimeout(wifiModeStart, 500); }
 (function() {
   const o = document.getElementById('stats-overlay');
