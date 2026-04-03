@@ -85,6 +85,10 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <FFat.h>
+#include <WebServer.h>
+#include <DNSServer.h>
+#include <ESPmDNS.h>
+#include "webapp_gz.h"  // gzipped web app embedded in firmware
 
 // LoRa SPI bus — instantiated inside loraBegin() to avoid global constructor issues
 
@@ -232,6 +236,7 @@ NimBLECharacteristic* pPeerChar  = nullptr;  // LoRa peer notify (read-only)
 bool bleConnected       = false;
 bool blePushLogPending  = false;  // push route log on next loop
 bool weatherReceived    = false;  // true once weather data is valid (WiFi or LoRa push)
+bool apEnabled          = false;  // true when AP mode is active
 bool clientSubscribed = false;
 
 // LoRa globals
@@ -541,7 +546,7 @@ int pageMessages()    { return loraMsgCount > 0 ? 1 : -1; }
 int pageMsgsOffset()  { return 0; }
 #endif
 int pageLogOffset()   { return routeLogCount > 0 ? 1 : 0; }
-int pageWifiOffset()  { return wifiEnabled ? 1 : 0; }
+int pageWifiOffset()  { return (wifiEnabled || apEnabled) ? 1 : 0; }
 
 // Base sequence (no optional pages): 0=GPS,1=Compass,2=Track,3=Waypoint,4=Elevation,5=Clock,6=Countdown,7=Stopwatch,8=Info,9=Settings,10=Power
 // Each optional page (msgs, routelog, weather) shifts everything after it by +1
@@ -613,6 +618,12 @@ char     wifiPass[64]    = "";
 char     owmApiKey[40]   = "";  // OpenWeatherMap API key
 bool     wifiEnabled     = false;
 bool     wifiConnected   = false;
+
+// ── AP / Web server ──────────────────────────────────────────────────────────
+WebServer  webServer(80);
+DNSServer  dnsServer;
+char       apSSID[32]    = "";      // e.g. "Azimuth-Proto1"
+char       apPass[20]    = "azimuth1";  // default AP password
 bool     wifiScanPending   = false;  // async scan requested from BLE
 bool     wifiRefreshPending  = false; // async WiFi fetch requested from BLE
 bool     wpBroadcastPending  = false; // async waypoint broadcast requested from BLE
@@ -1063,7 +1074,8 @@ void loadTimezone() {
   prefs.getString("wifiPass", wifiPass, sizeof(wifiPass));
   prefs.getString("owmKey",   owmApiKey, sizeof(owmApiKey));
   wifiEnabled = (strlen(wifiSSID) > 0);
-  setSpeedMph   = prefs.getBool("speedMph", false);
+  // Restore AP mode if it was enabled before reboot
+  bool savedAp = prefs.getBool("apEnabled", false);
   setElevFt     = prefs.getBool("elevFt", false);
   setTimeoutIdx = prefs.getUChar("timeoutIdx", 1);
   setBrightFull = prefs.getBool("brightFull", true);
@@ -1082,6 +1094,7 @@ void loadTimezone() {
   if (loraIntervalSec > LORA_MAX_INTERVAL_S) loraIntervalSec = LORA_MAX_INTERVAL_S;
 #endif
   prefs.end();
+  if (savedAp) apStart();
   if (lastKnownLat != 0.0)
     Serial.printf("[GPS] Last pos: %.6f, %.6f\n", lastKnownLat, lastKnownLon);
 }
@@ -1931,6 +1944,14 @@ class SetCharCB : public NimBLECharacteristicCallbacks {
       c->notify();
       if (pResChar) pResChar->setValue((uint8_t*)nameJson, strlen(nameJson));
       return;
+    } else if (val == "GETAP") {
+      char apJson[128];
+      snprintf(apJson, sizeof(apJson),
+        "{\"ap\":%d,\"ssid\":\"%s\",\"ip\":\"192.168.4.1\",\"pass\":\"azimuth1\"}",
+        apEnabled ? 1 : 0, bleDeviceName);
+      c->setValue(apJson);
+      c->notify();
+      return;
     } else if (val.find("SETNAME:") == 0) {
       String newName = String(val.c_str()).substring(8);
       newName.trim();
@@ -2082,7 +2103,20 @@ class SetCharCB : public NimBLECharacteristicCallbacks {
       c->setValue("{\"wps\":0}"); c->notify();
       Serial.println("[WP] Waypoints cleared via BLE");
       return;
-    } else if (val == "GETOWM") {
+    } else if (val.find("APMODE:") == 0) {
+      // Toggle AP web server: APMODE:1 to start, APMODE:0 to stop
+      String v = String(val.c_str()).substring(7);
+      if (v == "1") {
+        apStart();
+        char resp[64];
+        snprintf(resp, sizeof(resp), "{\"ap\":1,\"ssid\":\"%s\",\"ip\":\"%s\",\"pass\":\"%s\"}",
+          apSSID, WiFi.softAPIP().toString().c_str(), apPass);
+        c->setValue(resp); c->notify();
+      } else {
+        apStop();
+        c->setValue("{\"ap\":0}"); c->notify();
+      }
+      return;
       // Return OWM key — only to authorised session, used by web app for weather push
       char resp[64];
       if (strlen(owmApiKey) > 0) {
@@ -2581,9 +2615,266 @@ void wifiConnectAndFetch() {
 
   // Disconnect to free radio for BLE
   WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
+  // If AP mode is active, restore AP+STA or AP-only mode
+  if (apEnabled) {
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(apSSID, apPass);
+  } else {
+    WiFi.mode(WIFI_OFF);
+  }
   wifiConnected = false;
   Serial.println("[WIFI] Fetch complete, WiFi off");
+}
+
+// ── AP / Web server ───────────────────────────────────────────────────────────
+
+void webServerHandleRoot() {
+  webServer.sendHeader("Content-Encoding", "gzip");
+  webServer.sendHeader("Cache-Control", "no-cache");
+  webServer.send_P(200, "text/html", (const char*)WEBAPP_GZ, WEBAPP_GZ_LEN);
+}
+
+void webServerHandleNotFound() {
+  Serial.printf("[AP] 404: %s\n", webServer.uri().c_str());
+  webServer.sendHeader("Location", "/", true);
+  webServer.send(302, "text/plain", "");
+}
+
+// ── WiFi API handlers ─────────────────────────────────────────────────────────
+
+void apiHandleState() {
+  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+
+  // Build peers JSON using String to avoid buffer overflow with many peers
+  String peersJson = "[";
+  bool firstPeer = true;
+#if ENABLE_LORA
+  for (int p = 0; p < LORA_MAX_PEERS; p++) {
+    if (!loraPeers[p].active) continue;
+    if (!firstPeer) peersJson += ",";
+    char peerBuf[180];
+    snprintf(peerBuf, sizeof(peerBuf),
+      "{\"id\":\"%s\",\"name\":\"%s\",\"lat\":%.6f,\"lon\":%.6f,\"alt\":%.1f,"
+      "\"hdg\":%d,\"spd\":%d,\"bat\":%d,\"ts\":%lu,\"status\":%d}",
+      loraPeers[p].id, loraPeers[p].name,
+      loraPeers[p].lat, loraPeers[p].lon, loraPeers[p].alt,
+      loraPeers[p].hdg, loraPeers[p].spd, loraPeers[p].bat,
+      loraPeers[p].lastSeenMs, loraPeers[p].status);
+    peersJson += peerBuf;
+    firstPeer = false;
+  }
+#endif
+  peersJson += "]";
+
+  // Waypoints JSON
+  char wpJson[512] = "[";
+  for (int i = 0; i < waypointCount; i++) {
+    if (i > 0) strncat(wpJson, ",", sizeof(wpJson)-strlen(wpJson)-1);
+    char wpBuf[80];
+    snprintf(wpBuf, sizeof(wpBuf), "{\"name\":\"%s\",\"lat\":%.6f,\"lon\":%.6f}",
+      waypoints[i].name, waypoints[i].lat, waypoints[i].lon);
+    strncat(wpJson, wpBuf, sizeof(wpJson)-strlen(wpJson)-1);
+  }
+  strncat(wpJson, "]", sizeof(wpJson)-strlen(wpJson)-1);
+
+  // Weather JSON
+  char wxJson[128] = "null";
+  if (weather.valid) {
+    snprintf(wxJson, sizeof(wxJson),
+      "{\"t\":%.1f,\"f\":%.1f,\"mn\":%.1f,\"mx\":%.1f,\"h\":%d,"
+      "\"w\":%.1f,\"wd\":\"%s\",\"id\":%d,\"d\":\"%s\"}",
+      weather.tempC, weather.feelsLikeC, weather.tempMinC, weather.tempMaxC,
+      weather.humidity, weather.windKmh, weather.windDir,
+      weather.weatherId, weather.desc);
+  }
+
+  // Build full response using String for safety
+  String resp = "{";
+  char buf[256];
+  snprintf(buf, sizeof(buf),
+    "\"fix\":%d,\"lat\":%.6f,\"lon\":%.6f,\"alt\":%.1f,"
+    "\"spd\":%.1f,\"hdg\":%.1f,\"sats\":%d,"
+    "\"bat\":%d,\"batV\":%.2f,\"usb\":%d,"
+    "\"rec\":%d,\"sos\":%d,"
+    "\"name\":\"%s\",\"id\":\"%s\",\"ts\":%lu,",
+    cachedFix ? 1 : 0, cachedLat, cachedLon, cachedAlt,
+    (float)cachedSpd, (float)cachedHdg, cachedSats,
+    batPercent, batVoltage, batOnUSB ? 1 : 0,
+    routeRecording ? 1 : 0, sosActive ? 1 : 0,
+    bleDeviceName, loraDeviceId, millis());
+  resp += buf;
+
+  // Settings
+  snprintf(buf, sizeof(buf),
+    "\"settings\":{\"spd\":%d,\"elv\":%d,\"tmo\":%d,\"brt\":%d,"
+    "\"loraRegion\":%d,\"loraInterval\":%d},",
+    setSpeedMph ? 1 : 0, setElevFt ? 1 : 0, setTimeoutIdx, setBrightFull ? 1 : 0,
+    loraRegionIdx, loraIntervalSec);
+  resp += buf;
+
+  resp += "\"peers\":";   resp += peersJson; resp += ",";
+  resp += "\"wps\":";     resp += wpJson;    resp += ",";
+  resp += "\"wx\":";      resp += wxJson;
+  resp += "}";
+
+  webServer.send(200, "application/json", resp);
+}
+
+void apiHandleCmd() {
+  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  if (!webServer.hasArg("plain")) {
+    webServer.send(400, "application/json", "{\"err\":\"no body\"}");
+    return;
+  }
+  String body = webServer.arg("plain");
+  // Parse command — reuse same format as BLE commands
+  Serial.printf("[API] CMD: %s\n", body.c_str());
+
+  // Handle commands inline (no BLE stack concerns on main thread)
+  if (body == "SOS") {
+    loraSOSStart();
+  } else if (body == "CANCELSOS") {
+    loraSOSCancel();
+  } else if (body == "CLEARWP") {
+    waypointClear();
+    wpClearPending = true;
+  } else if (body.startsWith("SENDMSG:")) {
+    String text = body.substring(8);
+    text.trim();
+    if (text.length() > 0) loraSendMessage(text.c_str(), nullptr);
+  } else if (body.startsWith("SENDMSGDM:")) {
+    int sep = body.indexOf(':', 10);
+    if (sep > 10) {
+      String toId = body.substring(10, sep);
+      String text = body.substring(sep + 1);
+      text.trim();
+      if (text.length() > 0) loraSendMessage(text.c_str(), toId.c_str());
+    }
+  } else if (body.startsWith("SETWP:")) {
+    String jsonStr = body.substring(6);
+    strncpy(wpPendingJson, jsonStr.c_str(), sizeof(wpPendingJson) - 1);
+    wpBroadcastPending = true;
+  } else if (body.startsWith("SETNAME:")) {
+    String name = body.substring(8);
+    name.trim();
+    if (name.length() > 0 && name.length() <= 20) {
+      snprintf(bleDeviceName, sizeof(bleDeviceName), "Azimuth-%s", name.c_str());
+      prefs.begin("azimuth", false);
+      prefs.putString("devName", bleDeviceName);
+      prefs.end();
+    }
+  } else if (body.startsWith("SETLORA:")) {
+    // SETLORA:region:interval
+    String rest = body.substring(8);
+    int sep = rest.indexOf(':');
+    if (sep >= 0) {
+      int region = rest.substring(0, sep).toInt();
+      int interval = rest.substring(sep + 1).toInt();
+      if (region >= 0 && region < LORA_REGION_COUNT) loraRegionIdx = region;
+      if (interval >= LORA_MIN_INTERVAL_S && interval <= LORA_MAX_INTERVAL_S) loraIntervalSec = interval;
+      saveSettings();
+    }
+  } else if (body.startsWith("SETSET:")) {
+    // SETSET:spd:elv:tmo:brt
+    String rest = body.substring(7);
+    int s[4]; int idx = 0;
+    while (rest.length() > 0 && idx < 4) {
+      int sep = rest.indexOf(':');
+      s[idx++] = (sep >= 0 ? rest.substring(0, sep) : rest).toInt();
+      if (sep < 0) break;
+      rest = rest.substring(sep + 1);
+    }
+    if (idx == 4) {
+      setSpeedMph   = s[0] == 1;
+      setElevFt     = s[1] == 1;
+      setTimeoutIdx = constrain(s[2], 0, 4);
+      setBrightFull = s[3] == 1;
+      display.invertDisplay(!setBrightFull);
+      saveSettings();
+    }
+  }
+
+  webServer.send(200, "application/json", "{\"ok\":1}");
+}
+
+void apiHandleMessages() {
+  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  char json[1024] = "[";
+  bool first = true;
+#if ENABLE_LORA
+  for (int i = 0; i < LORA_MAX_MSGS; i++) {
+    if (!loraMsgs[i].active) continue;
+    if (!first) strncat(json, ",", sizeof(json)-strlen(json)-1);
+    char entry[160];
+    snprintf(entry, sizeof(entry),
+      "{\"from\":\"%s\",\"name\":\"%s\",\"text\":\"%s\",\"ts\":%lu}",
+      loraMsgs[i].fromId, loraMsgs[i].fromName, loraMsgs[i].text, loraMsgs[i].rxMs);
+    strncat(json, entry, sizeof(json)-strlen(json)-1);
+    first = false;
+  }
+#endif
+  strncat(json, "]", sizeof(json)-strlen(json)-1);
+  webServer.send(200, "application/json", json);
+}
+
+void apStart() {
+  if (apEnabled) return;
+  // Build SSID from device name
+  const char* rawName = bleDeviceName;
+  if (strncmp(rawName, "Azimuth-", 8) == 0) rawName += 8;
+  snprintf(apSSID, sizeof(apSSID), "Azimuth-%s", rawName);
+  // Use AP_STA if we have WiFi credentials, AP only otherwise
+  WiFiMode_t mode = wifiEnabled ? WIFI_AP_STA : WIFI_AP;
+  WiFi.mode(mode);
+  WiFi.softAP(apSSID, apPass);
+  IPAddress apIP = WiFi.softAPIP();
+  Serial.printf("[AP] Started: SSID=%s IP=%s\n", apSSID, apIP.toString().c_str());
+  // DNS server — redirect all domains to captive portal
+  dnsServer.start(53, "*", apIP);
+  // Web server routes
+  webServer.on("/", HTTP_GET, webServerHandleRoot);
+  webServer.on("/index.html", HTTP_GET, webServerHandleRoot);
+  webServer.on("/favicon.ico", HTTP_GET, [](){webServer.send(204);});
+  webServer.on("/manifest.json", HTTP_GET, [](){
+    webServer.send(200, "application/json",
+      "{\"name\":\"Azimuth\",\"short_name\":\"Azimuth\","
+      "\"start_url\":\"/\",\"display\":\"standalone\","
+      "\"background_color\":\"#0d1117\",\"theme_color\":\"#238636\"}");
+  });
+  webServer.on("/generate_204", HTTP_GET, webServerHandleRoot);
+  webServer.on("/hotspot-detect.html", HTTP_GET, webServerHandleRoot);
+  // API routes
+  webServer.on("/api/state",    HTTP_GET,  apiHandleState);
+  webServer.on("/api/cmd",      HTTP_POST, apiHandleCmd);
+  webServer.on("/api/messages", HTTP_GET,  apiHandleMessages);
+  webServer.onNotFound(webServerHandleNotFound);
+  webServer.begin();
+  // mDNS — device accessible at azimuth.local
+  if (MDNS.begin("azimuth")) {
+    MDNS.addService("http", "tcp", 80);
+    Serial.println("[AP] mDNS: azimuth.local");
+  }
+  apEnabled = true;
+  // Save AP enabled state to NVS
+  prefs.begin("azimuth", false);
+  prefs.putBool("apEnabled", true);
+  prefs.end();
+  oledDraw();
+}
+
+void apStop() {
+  if (!apEnabled) return;
+  webServer.stop();
+  dnsServer.stop();
+  MDNS.end();
+  WiFi.softAPdisconnect(true);
+  if (!wifiEnabled) WiFi.mode(WIFI_OFF);
+  apEnabled = false;
+  prefs.begin("azimuth", false);
+  prefs.putBool("apEnabled", false);
+  prefs.end();
+  Serial.println("[AP] Stopped");
+  oledDraw();
 }
 
 // ── Unit helpers ──────────────────────────────────────────────────────────
@@ -2915,15 +3206,24 @@ void drawPageInfo() {
     display.println(buf);
   }
 
-  // Row 2 — Uptime
+  // Row 2 — AP status or uptime
   display.drawBitmap(2, 24, ICON_CLK, 8, 8, SSD1306_WHITE);
-  snprintf(buf, sizeof(buf), "Up: %lus", millis() / 1000);
-  display.setCursor(13, 25); display.println(buf);
+  if (apEnabled) {
+    snprintf(buf, sizeof(buf), "%s", apSSID);
+    display.setCursor(13, 25); display.println(buf);
+  } else {    snprintf(buf, sizeof(buf), "Up: %lus", millis() / 1000);
+    display.setCursor(13, 25); display.println(buf);
+  }
 
-  // Row 3 — Satellites
+  // Row 3 — AP IP or satellites
   display.drawBitmap(2, 35, ICON_SAT, 8, 8, SSD1306_WHITE);
-  snprintf(buf, sizeof(buf), "Sats: %u", cachedSats);
-  display.setCursor(13, 36); display.println(buf);
+  if (apEnabled) {
+    snprintf(buf, sizeof(buf), "azimuth.local");
+    display.setCursor(13, 36); display.println(buf);
+  } else {
+    snprintf(buf, sizeof(buf), "Sats: %u", cachedSats);
+    display.setCursor(13, 36); display.println(buf);
+  }
 
   // Row 4 — Battery, left-aligned with other rows (no separate bat icon)
   display.drawBitmap(2, 47, ICON_PWR, 8, 8, SSD1306_WHITE);
@@ -4725,6 +5025,12 @@ void loop() {
     loraExpirePeers();
   }
 #endif // ENABLE_LORA
+
+  // ── AP web server ────────────────────────────────────────────────────────
+  if (apEnabled) {
+    dnsServer.processNextRequest();
+    webServer.handleClient();
+  }
 
   delay(10);
 }

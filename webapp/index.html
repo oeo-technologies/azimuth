@@ -18,6 +18,24 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// If Leaflet failed to load (no internet — WiFi AP mode), provide a stub
+// so the rest of the app initialises without crashing
+if (typeof L === 'undefined') {
+  window.L = {
+    map: function() { return { setView:function(){return this;}, addLayer:function(){return this;}, on:function(){return this;}, off:function(){return this;}, panTo:function(){return this;}, setZoom:function(){return this;}, getZoom:function(){return 14;}, invalidateSize:function(){return this;}, removeLayer:function(){return this;}, _zooming_programmatic:false }; },
+    tileLayer: function() { return { addTo:function(){return this;} }; },
+    marker: function() { return { setLatLng:function(){return this;}, addTo:function(){return this;}, setIcon:function(){return this;}, setPopupContent:function(){return this;}, bindTooltip:function(){return this;}, remove:function(){return this;} }; },
+    divIcon: function() { return {}; },
+    icon: function() { return {}; },
+    polyline: function() { return { addTo:function(){return this;}, addLatLng:function(){return this;}, setLatLngs:function(){return this;}, remove:function(){return this;} }; },
+    circle: function() { return { addTo:function(){return this;}, remove:function(){return this;} }; },
+    control: { zoom: function() { return { addTo:function(){return this;} }; } },
+    noOffline: true
+  };
+  console.log('Leaflet not available — map disabled (no internet)');
+}
+</script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -203,10 +221,36 @@ main {
 
 /* ── Log panel (desktop) ── */
 .log-panel {
-  height: 160px; flex-shrink: 0;
+  flex-shrink: 0;
   background: var(--surface); border-top: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
+  transition: height .22s ease;
+  height: 160px;
 }
+.log-panel.collapsed { height: 34px; }
+body.wifi-mode .log-panel { height: 34px; }
+body.wifi-mode .log-panel.expanded { height: 160px; }
+/* WiFi mode — header: hide theme btn, show and style fix badge */
+body.wifi-mode #theme-btn { display: none !important; }
+body.wifi-mode #connect-hint { display: none !important; }
+body.wifi-mode #rec-badge { display: none !important; }
+body.wifi-mode #fix-badge {
+  display: flex !important;
+  position: absolute;
+  right: 0; width: 76px;
+  justify-content: center;
+  top: 50%; transform: translateY(-50%);
+  max-width: 76px; padding: 4px 6px;
+  font-size: 10px; gap: 4px;
+  border: none !important; background: none !important;
+  flex-direction: column; align-items: center;
+}
+body.wifi-mode .fix-badge #fix-text { color: #6e7681 !important; font-size: 9px; letter-spacing:.02em; }
+body.wifi-mode .fix-badge.active #fix-text { color: #3fb950 !important; }
+body.wifi-mode .fix-badge svg { width: 16px; height: 16px; }
+/* Light theme fix badge */
+body.wifi-mode.wifi-light .fix-badge #fix-text { color: #57606a !important; }
+body.wifi-mode.wifi-light .fix-badge.active #fix-text { color: #1a7f37 !important; }
 .log-header {
   padding: 6px 14px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 8px;
@@ -224,7 +268,7 @@ main {
 /* ── Mobile layout ── */
 
 @media (max-width: 480px) {
-  #stats-overlay { grid-template-columns: repeat(2,1fr); }
+  #stats-overlay { display:flex; }
   header { padding: 0 10px; gap: 6px; }
 }
 
@@ -386,21 +430,33 @@ main {
       <path d="M11.5 2.5 L10 4" stroke="#B4B2A9" stroke-width="1.2" stroke-linecap="round" id="fix-ray7"/>
       <path d="M4 10 L2.5 11.5" stroke="#B4B2A9" stroke-width="1.2" stroke-linecap="round" id="fix-ray8"/>
     </svg>
-    <span id="fix-text" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">No fix</span>
+    <span id="fix-text" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);">No fix</span>
   </div>
   <div class="header-right">
     <span id="connect-hint" style="font-size:11px;color:var(--hint);white-space:nowrap;">Connect a device</span>
     <button id="theme-btn" title="Choose theme" onclick="document.getElementById('theme-modal').style.display='block'" style="width:36px;height:36px;background:transparent;border:1px solid var(--border2);border-radius:8px;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .15s;flex-shrink:0;">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.5v13M1.5 8h13" stroke="currentColor" stroke-width="1.2" opacity=".35"/><path d="M8 8a3 3 0 1 0 0-6v6z" fill="currentColor" opacity=".6"/></svg>
     </button>
-    <button id="menu-btn" title="Menu" onclick="toggleDrawer()" style="display:none;width:36px;height:36px;background:transparent;border:1px solid var(--border2);border-radius:8px;color:var(--muted);cursor:pointer;align-items:center;justify-content:center;position:relative;transition:border-color .15s,color .15s;flex-shrink:0;">
+    <button id="menu-btn" title="Menu" onclick="toggleDrawer()" style="display:none;width:44px;height:44px;background:transparent;border:1px solid var(--border2);border-radius:8px;color:var(--muted);cursor:pointer;align-items:center;justify-content:center;position:relative;transition:border-color .15s,color .15s;flex-shrink:0;">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><line x1="2" y1="4.5" x2="14" y2="4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="11.5" x2="14" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       <span id="rec-pip" style="display:none;position:absolute;top:5px;right:5px;width:7px;height:7px;background:var(--danger);border-radius:50%;border:1.5px solid var(--surface);animation:pulse 1s infinite;"></span>
-      <span id="peer-count-pip" style="display:none;position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;background:var(--accent);color:#fff;border-radius:8px;font-size:9px;font-weight:700;line-height:16px;text-align:center;padding:0 3px;font-family:var(--font);border:2px solid var(--surface);"></span>
+      <span id="peer-count-pip" style="display:none;position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;background:var(--accent);color:#fff;border-radius:9px;font-size:9px;font-weight:700;text-align:center;padding:0 4px;font-family:var(--font);border:2px solid var(--surface);box-sizing:border-box;display:none;align-items:center;justify-content:center;line-height:1;"></span>
     </button>
     <button id="peers-btn" style="display:none;"></button>
     <button id="settings-btn" style="display:none;"></button>
     <button id="connect-btn">Connect</button>
+    <script>
+      // Hide connect button immediately if served from device WiFi AP
+      (function(){
+        var h = window.location.hostname;
+        if (h === '192.168.4.1' || h === 'azimuth.local') {
+          var cb = document.getElementById('connect-btn');
+          if (cb) cb.style.display = 'none';
+          var so = document.getElementById('stats-overlay');
+          if (so) so.style.display = 'none';
+        }
+      })();
+    </script>
   </div>
 </header>
 
@@ -450,23 +506,6 @@ main {
 
 
 
-      <!-- Map type switcher -->
-      <div style="position:absolute;bottom:52px;right:10px;z-index:10;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-        <div id="map-type-label" style="font-size:9px;color:var(--muted);background:rgba(255,255,255,0.92);
-          padding:2px 6px;border-radius:4px;border:1px solid var(--border);
-          position:absolute;bottom:40px;right:0;white-space:nowrap;
-          opacity:0;pointer-events:none;transition:opacity .15s;">Outdoors</div>
-        <button id="map-type-btn" onclick="cycleTileLayer()"
-          style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;
-                 background:rgba(255,255,255,0.92);border:1px solid var(--border);
-                 border-radius:8px;cursor:pointer;padding:0;color:var(--text);">
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 1.5L1.5 5.25L9 9L16.5 5.25L9 1.5Z" fill="currentColor" opacity="0.35"/>
-            <path d="M1.5 9L9 12.75L16.5 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M1.5 12.75L9 16.5L16.5 12.75" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
 
       <!-- REC badge overlay -->
       <div style="position:absolute;top:10px;right:10px;z-index:10;">
@@ -479,6 +518,140 @@ main {
 
 
       <div id="map" style="flex:1;min-height:0;width:100%;position:relative;">
+        <!-- WiFi AP mode — full UI replaces map -->
+        <div id="wifi-ui" style="display:none;position:absolute;inset:0;z-index:10;flex-direction:column;background:#0d1117;">
+          <!-- Main row: radar + collapsible strip -->
+          <div style="flex:1;display:flex;min-height:0;position:relative;">
+            <!-- Radar -->
+            <div id="radar-div" style="flex:1;position:relative;overflow:hidden;touch-action:none;">
+              <canvas id="radar-canvas" style="position:absolute;inset:0;"></canvas>
+              <div id="radar-range-label" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:700;color:#3fb950;letter-spacing:.06em;background:rgba(13,17,23,.88);padding:3px 12px;border-radius:12px;border:1px solid rgba(63,185,80,.35);pointer-events:none;white-space:nowrap;z-index:2;display:none;"></div>
+              <!-- Waypoint nav overlay -->
+              <div id="wpnav-overlay" style="display:none;position:absolute;bottom:10px;left:50%;transform:translateX(-50%);min-width:190px;background:rgba(13,17,23,.94);border:1px solid #238636;border-radius:14px;padding:10px 16px;text-align:center;z-index:5;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                  <span id="wpnav-name" style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#3fb950;font-weight:700;"></span>
+                  <button onclick="wpNavStop()" style="background:none;border:none;color:#8b949e;font-size:20px;cursor:pointer;padding:0;line-height:1;min-width:36px;min-height:36px;">x</button>
+                </div>
+                <div style="position:relative;width:56px;height:56px;margin:0 auto 8px;">
+                  <svg width="56" height="56" viewBox="0 0 56 56">
+                    <circle cx="28" cy="28" r="25" fill="none" stroke="#30363d" stroke-width="1.5"/>
+                    <g id="wpnav-arrow" transform="rotate(0 28 28)">
+                      <polygon points="28,4 23,28 28,22 33,28" fill="#238636"/>
+                      <polygon points="28,52 23,28 28,34 33,28" fill="#8b949e" opacity=".4"/>
+                    </g>
+                  </svg>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:center;gap:14px;">
+                  <div><div style="font-size:10px;color:#8b949e;">Bearing</div><div style="font-size:15px;font-weight:700;color:var(--text);font-family:monospace;" id="wpnav-bearing">&#8212;</div></div>
+                  <div style="width:1px;height:24px;background:#30363d;"></div>
+                  <div><div style="font-size:10px;color:#8b949e;">Distance</div><div style="font-size:15px;font-weight:700;color:var(--text);font-family:monospace;" id="wpnav-dist">&#8212;</div></div>
+                </div>
+              </div>
+            </div>
+            <!-- Collapsible strip -->
+            <div id="wifi-strip-wrap" style="position:relative;width:76px;transition:width .25s ease;flex-shrink:0;">
+              <div id="wifi-strip-tab" onclick="wifiToggleStrip()"
+                style="position:absolute;left:-22px;top:10px;width:22px;height:52px;background:#161b22;border:1px solid #21262d;border-right:none;border-radius:9px 0 0 9px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:6;">
+                <span id="wifi-strip-arrow" style="font-size:15px;color:#8b949e;line-height:1;user-select:none;transition:transform .25s ease;">&#8250;</span>
+              </div>
+              <div id="wifi-strip" style="width:76px;height:100%;background:#0d1117;border-left:2px solid #21262d;display:flex;flex-direction:column;align-items:center;padding:10px 0;overflow:hidden;">
+                <!-- Compass -->
+                <div style="width:100%;display:flex;flex-direction:column;align-items:center;padding:8px 6px;gap:4px;">
+                  <svg id="wifi-compass-svg" width="52" height="52" viewBox="0 0 52 52" style="cursor:pointer;" onclick="compassToggle()">
+                    <circle cx="26" cy="26" r="24" fill="none" stroke="#30363d" stroke-width="1.5"/>
+                    <text x="26" y="14" text-anchor="middle" font-size="9" fill="#8b949e" font-family="monospace" font-weight="700">N</text>
+                    <text x="26" y="42" text-anchor="middle" font-size="9" fill="#8b949e" font-family="monospace">S</text>
+                    <text x="10" y="30" text-anchor="middle" font-size="9" fill="#8b949e" font-family="monospace">W</text>
+                    <text x="42" y="30" text-anchor="middle" font-size="9" fill="#8b949e" font-family="monospace">E</text>
+                    <g id="wifi-compass-needle">
+                      <polygon points="26,6 23,26 26,23 29,26" fill="#58a6ff"/>
+                      <polygon points="26,46 23,26 26,29 29,26" fill="#8b949e" opacity=".5"/>
+                    </g>
+                  </svg>
+                  <div id="wifi-compass-deg" style="font-size:11px;font-weight:700;color:#58a6ff;font-family:monospace;text-align:center;">---</div>
+                </div>
+                <div style="width:52px;height:1px;background:#21262d;flex-shrink:0;"></div>
+                <!-- Weather -->
+                <div id="wifi-wx-section" style="width:100%;display:none;flex-direction:column;align-items:center;padding:8px 6px;gap:3px;">
+                  <div id="wifi-wx-icon" style="font-size:22px;line-height:1;">&#x1F324;</div>
+                  <div id="wifi-wx-temp" style="font-size:13px;font-weight:700;color:#e6edf3;font-family:monospace;text-align:center;">&#8212;</div>
+                  <div id="wifi-wx-wind" style="font-size:9px;color:#8b949e;text-align:center;"></div>
+                  <div id="wifi-wx-hum" style="font-size:9px;color:#8b949e;text-align:center;"></div>
+                </div>
+                <div id="wifi-wx-divider" style="width:52px;height:1px;background:#21262d;flex-shrink:0;display:none;"></div>
+                <!-- MSG button -->
+                <div style="width:100%;display:flex;flex-direction:column;align-items:center;padding:8px 6px;">
+                  <div onclick="wifiToggleMsg()" style="width:52px;height:52px;border-radius:12px;border:1px solid #30363d;background:#161b22;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;position:relative;">
+                    <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="18" height="13" rx="3" stroke="#8b949e" stroke-width="1.4"/><path d="M6 15v4l5-4" stroke="#8b949e" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                    <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.04em;">MSG</div>
+                    <div id="wifi-msg-pip" style="display:none;position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;background:#3fb950;border-radius:9px;border:2px solid #0d1117;font-size:9px;font-weight:700;color:#0d1117;align-items:center;justify-content:center;padding:0 3px;"></div>
+                  </div>
+                </div>
+                <div style="width:52px;height:1px;background:#21262d;flex-shrink:0;"></div>
+                <!-- PEERS button -->
+                <div style="width:100%;display:flex;flex-direction:column;align-items:center;padding:8px 6px;">
+                  <div onclick="wifiTogglePeers()" style="width:52px;height:52px;border-radius:12px;border:1px solid #30363d;background:#161b22;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;position:relative;">
+                    <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="7" r="4" stroke="#8b949e" stroke-width="1.4"/><path d="M3 19c0-4 3.1-6.5 8-6.5s8 2.5 8 6.5" stroke="#8b949e" stroke-width="1.4" stroke-linecap="round"/></svg>
+                    <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.04em;">PEERS</div>
+                    <div id="wifi-peer-pip" style="display:none;position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;background:#58a6ff;border-radius:9px;border:2px solid #0d1117;font-size:9px;font-weight:700;color:#0d1117;align-items:center;justify-content:center;padding:0 3px;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Stat bar -->
+          <div id="wifi-stat-bar" style="height:52px;background:#0d1117;border-top:2px solid #21262d;display:flex;align-items:stretch;flex-shrink:0;">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-right:1px solid #21262d;">
+              <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.04em;">Spd</div>
+              <div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1;" id="wifi-stat-spd">&#8212;</div>
+              <div style="font-size:9px;color:#8b949e;" id="wifi-stat-spd-unit"></div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-right:1px solid #21262d;">
+              <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.04em;">Alt</div>
+              <div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1;" id="wifi-stat-alt">&#8212;</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-right:1px solid #21262d;">
+              <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.04em;">Hdg</div>
+              <div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1;" id="wifi-stat-hdg">&#8212;</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;">
+              <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.04em;">Bat</div>
+              <div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1;" id="wifi-stat-bat">&#8212;</div>
+            </div>
+          </div>
+          <!-- Coord bar -->
+          <div id="wifi-coord-bar" style="height:28px;background:#0d1117;border-top:1px solid #161b22;display:flex;align-items:center;justify-content:space-evenly;flex-shrink:0;">
+            <span style="font-size:10px;color:#8b949e;font-family:monospace;">Lat <span id="wifi-coord-lat" style="color:#c9d1d9;font-weight:700;">&#8212;</span></span>
+            <span style="font-size:10px;color:#8b949e;font-family:monospace;">Lon <span id="wifi-coord-lon" style="color:#c9d1d9;font-weight:700;">&#8212;</span></span>
+            <span style="font-size:10px;color:#8b949e;font-family:monospace;">Sats <span id="wifi-coord-sats" style="color:#c9d1d9;font-weight:700;">&#8212;</span></span>
+          </div>
+          <!-- Flyout overlay -->
+          <div id="wifi-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:20;" onclick="wifiCloseAll()"></div>
+          <!-- Peers flyout -->
+          <div id="wifi-peers-flyout" style="display:none;position:absolute;top:0;left:0;right:0;bottom:80px;background:#161b22;z-index:25;flex-direction:column;transform:translateX(100%);transition:transform .22s ease;">
+            <div style="padding:10px 14px;border-bottom:1px solid #21262d;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+              <span id="wifi-peers-title" style="font-size:14px;font-weight:700;color:#e6edf3;">Peers</span>
+              <button onclick="wifiTogglePeers()" style="background:none;border:none;color:#8b949e;font-size:24px;cursor:pointer;line-height:1;min-width:44px;min-height:44px;">x</button>
+            </div>
+            <div id="wifi-peers-list" style="flex:1;padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;"></div>
+          </div>
+          <!-- Messages flyout -->
+          <div id="wifi-msg-flyout" style="display:none;position:absolute;top:0;left:0;right:0;bottom:80px;background:#161b22;z-index:25;flex-direction:column;transform:translateX(100%);transition:transform .22s ease;">
+            <div style="padding:10px 14px;border-bottom:1px solid #21262d;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+              <span style="font-size:14px;font-weight:700;color:#e6edf3;">Messages</span>
+              <button onclick="wifiToggleMsg()" style="background:none;border:none;color:#8b949e;font-size:24px;cursor:pointer;line-height:1;min-width:44px;min-height:44px;">x</button>
+            </div>
+            <div id="wifi-msg-log" style="flex:1;padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;"></div>
+            <div style="padding:8px 10px;border-top:1px solid #21262d;display:flex;gap:8px;align-items:center;flex-shrink:0;">
+              <input id="wifi-msg-input" type="text" maxlength="48" placeholder="Type a message..."
+                style="flex:1;background:#21262d;border:1px solid #30363d;border-radius:16px;padding:8px 14px;font-size:14px;color:#e6edf3;font-family:inherit;"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();wifiSendMessage()}"/>
+              <div onclick="wifiSendMessage()" style="width:40px;height:40px;background:#238636;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 8h14M8 1l7 7-7 7" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
         <button id="locate-btn" title="Return to my location">
           <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -486,6 +659,93 @@ main {
             <circle cx="12" cy="12" r="8" stroke-opacity=".3"/>
           </svg>
         </button>
+        <!-- Radar overlay toggle (BLE mode) -->
+        <button id="radar-overlay-btn" onclick="mapRadarToggle()" title="Toggle radar overlay"
+          style="position:absolute;bottom:60px;right:10px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);border:1px solid var(--border);border-radius:8px;cursor:pointer;padding:0;color:var(--text);z-index:10;">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.2" opacity=".4"/>
+            <circle cx="9" cy="9" r="4" stroke="currentColor" stroke-width="1.2" opacity=".6"/>
+            <circle cx="9" cy="9" r="1.5" fill="currentColor"/>
+            <line x1="9" y1="2" x2="9" y2="16" stroke="currentColor" stroke-width=".8" stroke-dasharray="1,2" opacity=".4"/>
+            <line x1="2" y1="9" x2="16" y2="9" stroke="currentColor" stroke-width=".8" stroke-dasharray="1,2" opacity=".4"/>
+          </svg>
+        </button>
+        <!-- Map radar overlay (BLE mode — rings over street map) -->
+        <canvas id="map-radar-canvas" style="display:none;position:absolute;inset:0;z-index:9;pointer-events:none;width:100%;height:100%;"></canvas>
+
+        <!-- Compass overlay — top right -->
+        <div id="compass-overlay" style="display:none;position:absolute;top:10px;right:10px;z-index:20;
+          width:80px;height:80px;background:rgba(13,17,23,0.88);border:1px solid var(--border2);
+          border-radius:50%;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+          display:none;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;"
+          onclick="compassToggle()" title="Tap to toggle compass">
+          <svg id="compass-svg" width="64" height="64" viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="30" fill="none" stroke="var(--border2)" stroke-width="1"/>
+            <!-- Cardinal marks -->
+            <text x="32" y="9" text-anchor="middle" font-size="8" font-weight="700" fill="var(--accent)" font-family="monospace">N</text>
+            <text x="32" y="61" text-anchor="middle" font-size="7" fill="var(--muted)" font-family="monospace">S</text>
+            <text x="7"  y="35" text-anchor="middle" font-size="7" fill="var(--muted)" font-family="monospace">W</text>
+            <text x="57" y="35" text-anchor="middle" font-size="7" fill="var(--muted)" font-family="monospace">E</text>
+            <!-- Needle — rotated by JS -->
+            <g id="compass-needle" transform="rotate(0 32 32)">
+              <polygon points="32,6 28,32 32,28 36,32" fill="var(--accent)"/>
+              <polygon points="32,58 28,32 32,36 36,32" fill="var(--muted)" opacity=".5"/>
+            </g>
+          </svg>
+          <div id="compass-deg" style="font-size:9px;font-weight:700;color:var(--accent);font-family:monospace;margin-top:-4px;">---°</div>
+        </div>
+
+        <!-- Waypoint nav overlay — bottom centre above stats -->
+        <div id="wpnav-overlay" style="display:none;position:absolute;bottom:70px;left:50%;
+          transform:translateX(-50%);z-index:20;min-width:200px;max-width:280px;
+          background:var(--surface);border:1px solid var(--accent);border-radius:14px;
+          padding:10px 16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);text-align:center;">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;" >
+            <span id="wpnav-name">Waypoint</span>
+            <button onclick="wpNavStop()" style="background:none;border:none;color:var(--hint);font-size:16px;cursor:pointer;padding:0;line-height:1;">×</button>
+          </div>
+          <!-- Bearing arrow -->
+          <div style="position:relative;width:52px;height:52px;margin:0 auto 6px;">
+            <svg width="52" height="52" viewBox="0 0 52 52">
+              <circle cx="26" cy="26" r="24" fill="none" stroke="var(--border2)" stroke-width="1.5"/>
+              <g id="wpnav-arrow" transform="rotate(0 26 26)">
+                <polygon points="26,4 21,26 26,20 31,26" fill="var(--accent)"/>
+                <polygon points="26,48 21,26 26,32 31,26" fill="var(--muted)" opacity=".4"/>
+              </g>
+            </svg>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:12px;">
+            <div>
+              <div style="font-size:9px;color:var(--hint);">Bearing</div>
+              <div style="font-size:14px;font-weight:700;color:var(--text);font-family:monospace;" id="wpnav-bearing">—°</div>
+            </div>
+            <div style="width:1px;height:24px;background:var(--border);"></div>
+            <div>
+              <div style="font-size:9px;color:var(--hint);">Distance</div>
+              <div style="font-size:14px;font-weight:700;color:var(--text);font-family:monospace;" id="wpnav-dist">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Weather card — right side, below compass -->
+        <div id="wx-overlay" style="display:none;position:absolute;top:100px;right:10px;z-index:20;
+          width:110px;background:rgba(13,17,23,0.88);border:1px solid var(--border2);border-radius:12px;
+          padding:10px 10px 8px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <div id="wx-icon" style="font-size:22px;line-height:1;">🌤</div>
+            <div>
+              <div style="font-size:18px;font-weight:700;color:var(--text);font-family:monospace;line-height:1;" id="wx-temp">—</div>
+              <div style="font-size:8px;color:var(--hint);" id="wx-feels">feels —</div>
+            </div>
+          </div>
+          <div style="font-size:9px;color:var(--muted);text-transform:capitalize;margin-bottom:4px;line-height:1.3;" id="wx-desc">—</div>
+          <div style="font-size:8px;color:var(--hint);">
+            <span id="wx-wind">—</span> · <span id="wx-hum">—</span>
+          </div>
+          <div style="font-size:8px;color:var(--hint);margin-top:2px;">
+            <span id="wx-minmax">—</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -498,12 +758,15 @@ main {
       <canvas id="elev-chart" style="width:100%;display:block;" height="80"></canvas>
     </div>
 
-    <!-- Desktop log panel -->
-    <div class="log-panel">
-      <div class="log-header">
-        <span class="section-label" style="margin-bottom:0;">Activity log</span>
+    <!-- Activity log — collapsible -->
+    <div class="log-panel" id="log-panel">
+      <div class="log-header" style="cursor:pointer;" onclick="logToggle()">
+        <span class="section-label" style="margin-bottom:0;flex:1;">Activity log</span>
+        <span id="log-toggle-arrow" style="font-size:22px;color:var(--muted);transition:transform .2s;line-height:1;">▾</span>
       </div>
-      <div id="log"></div>
+      <div id="log-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+        <div id="log"></div>
+      </div>
     </div>
   </div>
 </main>
@@ -528,6 +791,218 @@ main {
   overflow: hidden;
 }
 .az-panel.open { display: flex; }
+/* WiFi mode — hide items that don't apply */
+body.wifi-mode .ble-only-item { display: none !important; }
+body.wifi-mode #menu-peers-badge { display: none !important; }
+body.wifi-mode #menu-wayf-badge { display: none !important; }
+body.wifi-mode #menu-item-peers { display: none !important; }
+body.wifi-mode #peer-count-pip { display: none !important; }
+body.wifi-mode .az-panel {
+  right: 0 !important; left: 0 !important;
+  top: 0 !important; bottom: 0 !important;
+  width: 100% !important; max-width: 100% !important;
+  border: none !important;
+  background: rgba(13,17,23,0.97);
+  color: #e6edf3;
+}
+/* North Cyprus style: panel-main is a centred fullscreen overlay */
+body.wifi-mode #panel-main {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 60px 36px 36px;
+}
+body.wifi-mode #panel-main.open { display: flex; }
+/* Large bold menu items */
+body.wifi-mode #panel-main .az-panel-hdr { display: none; }
+body.wifi-mode #panel-main .az-panel-body {
+  display: flex; flex-direction: column;
+  justify-content: center; flex: 1;
+  overflow: visible;
+  background: transparent; padding: 0; width: 100%;
+}
+body.wifi-mode #panel-main .az-menu-item {
+  border-bottom: 1px solid rgba(255,255,255,.1) !important;
+  padding: 12px 0;
+  background: transparent;
+  gap: 16px;
+}
+body.wifi-mode #panel-main .az-menu-item:first-child { border-top: 1px solid rgba(255,255,255,.1) !important; }
+body.wifi-mode #panel-main .az-menu-item:active { background: transparent; opacity: .7; }
+body.wifi-mode #panel-main .az-menu-icon {
+  width: 36px; height: 36px; border-radius: 9px;
+  background: rgba(255,255,255,.07) !important;
+  flex-shrink: 0;
+}
+body.wifi-mode #panel-main .az-menu-name {
+  font-size: 22px; font-weight: 700;
+  color: #e6edf3; letter-spacing: -.01em; line-height: 1.1;
+}
+body.wifi-mode #panel-main .az-menu-desc { font-size: 11px; color: #8b949e; }
+body.wifi-mode #panel-main .az-menu-arrow { display: none; }
+body.wifi-mode #panel-main .az-badge { margin-left: 10px; font-size: 10px; }
+body.wifi-mode #panel-main .az-section-label { display: none; }
+/* Light theme dividers */
+body.wifi-mode.wifi-light #panel-main { background: rgba(255,255,255,0.97) !important; }
+body.wifi-mode.wifi-light #panel-main .az-menu-item { border-bottom-color: rgba(0,0,0,.1) !important; }
+body.wifi-mode.wifi-light #panel-main .az-menu-item:first-child { border-top-color: rgba(0,0,0,.1) !important; }
+/* Staggered fade-in animation for menu items */
+@keyframes wifiMenuIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Close (×) button top-right */
+body.wifi-mode #panel-main-close {
+  position: absolute; top: 14px; right: 16px;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,.08); border: none;
+  color: #e6edf3; font-size: 22px; cursor: pointer;
+  display: none; align-items: center; justify-content: center;
+  line-height: 1; z-index: 1;
+}
+body.wifi-mode #panel-main.open #panel-main-close { display: flex; }
+/* Light theme panel overlay */
+body.wifi-mode.wifi-light #panel-main { background: #ffffff !important; }
+body.wifi-mode.wifi-light #panel-main .az-menu-name { color: #1f2328; }
+body.wifi-mode.wifi-light #panel-main .az-menu-icon { background: rgba(0,0,0,.07) !important; }
+body.wifi-mode.wifi-light #panel-main-close {
+  background: rgba(0,0,0,.09); color: #1f2328;
+}
+body.wifi-mode .az-panel-hdr {
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+}
+body.wifi-mode .az-panel-title { color: #e6edf3; font-size: 15px; font-weight: 700; }
+body.wifi-mode .az-back-btn {
+  background: #21262d !important;
+  border: 1px solid #30363d !important;
+  color: #c9d1d9 !important;
+  width: 34px; height: 34px; border-radius: 8px;
+  font-size: 18px; display: flex; align-items: center; justify-content: center;
+}
+/* Sub-panel body — larger readable text */
+body.wifi-mode .az-panel-body { background: #161b22; padding: 16px 14px; }
+body.wifi-mode .az-panel-body p,
+body.wifi-mode .az-panel-body div:not([class]) { color: #c9d1d9; font-size: 13px; line-height: 1.5; }
+/* Menu items inside panels (e.g. device sub-items) */
+body.wifi-mode .az-menu-item {
+  border-bottom: 1px solid #21262d; padding: 12px 14px;
+  background: transparent; gap: 12px;
+}
+body.wifi-mode .az-menu-item:active { background: rgba(255,255,255,.04); }
+body.wifi-mode .az-menu-name { color: #e6edf3; font-size: 13px; }
+body.wifi-mode .az-menu-desc { color: #8b949e; font-size: 11px; }
+body.wifi-mode .az-menu-arrow { color: #8b949e; }
+body.wifi-mode .az-section-label { color: #8b949e; border-bottom-color: #21262d; }
+body.wifi-mode .az-panel-body { background: #161b22; }
+body.wifi-mode .az-panel-footer { background: #161b22; border-top-color: #21262d; }
+body.wifi-mode .az-tab-bar { background: #0d1117; border-bottom-color: #21262d; }
+body.wifi-mode .az-tab { color: #8b949e; border-bottom-color: transparent; }
+body.wifi-mode .az-tab.active { color: #3fb950; border-bottom-color: #3fb950; }
+body.wifi-mode #az-overlay { background: rgba(0,0,0,.6); }
+/* Inputs and selects inside panels */
+body.wifi-mode input, body.wifi-mode select, body.wifi-mode textarea {
+  background: #21262d !important; border-color: #30363d !important;
+  color: #e6edf3 !important; font-size: 13px;
+}
+body.wifi-mode input::placeholder { color: #6e7681 !important; }
+/* Labels and hint text */
+body.wifi-mode label { color: #c9d1d9; font-size: 13px; }
+body.wifi-mode .az-hint, body.wifi-mode [style*="var(--hint)"] { color: #6e7681; }
+body.wifi-mode [style*="var(--muted)"] { color: #8b949e !important; }
+body.wifi-mode [style*="var(--text)"] { color: #e6edf3 !important; }
+/* Panel section labels (uppercase headers inside panels) */
+body.wifi-mode [style*="text-transform:uppercase"][style*="font-weight:700"],
+body.wifi-mode [style*="text-transform: uppercase"][style*="font-weight: 700"] {
+  color: #6e7681 !important;
+}
+/* Icons inside panel content — match menu icon style */
+body.wifi-mode .az-panel-body .wp-icon,
+body.wifi-mode .az-panel-body [class*="icon"] {
+  background: #21262d; border-radius: 8px;
+}
+/* WiFi light theme — sub-panel overrides */
+body.wifi-mode.wifi-light .az-panel-hdr { background: #fff; border-bottom-color: #e0e4e8; }
+body.wifi-mode.wifi-light .az-panel-title { color: #1f2328; }
+body.wifi-mode.wifi-light .az-back-btn {
+  background: #f0f0f0 !important; border-color: #c8c8c8 !important; color: #1f2328 !important;
+}
+body.wifi-mode.wifi-light .az-panel-body { background: #fff; }
+body.wifi-mode.wifi-light .az-menu-item { border-bottom-color: #e0e4e8; }
+body.wifi-mode.wifi-light .az-menu-name { color: #1f2328; }
+body.wifi-mode.wifi-light .az-menu-desc { color: #57606a; }
+body.wifi-mode.wifi-light .az-panel-footer { background: #fff; border-top-color: #e0e4e8; }
+body.wifi-mode.wifi-light input, body.wifi-mode.wifi-light select, body.wifi-mode.wifi-light textarea {
+  background: #f6f8fa !important; border-color: #d0d7de !important; color: #1f2328 !important;
+}
+body.wifi-mode.wifi-light label { color: #1f2328; }
+body.wifi-mode.wifi-light .az-panel-body p,
+body.wifi-mode.wifi-light .az-panel-body div:not([class]) { color: #1f2328; }
+body.wifi-mode.wifi-light [style*="var(--muted)"] { color: #57606a !important; }
+body.wifi-mode.wifi-light [style*="var(--text)"] { color: #1f2328 !important; }
+body.wifi-mode.wifi-light [style*="var(--hint)"] { color: #8b949e !important; }
+/* WiFi light theme — overrides the dark vars back to light */
+body.wifi-mode.wifi-light {
+  --surface:  #ffffff;
+  --surface2: #f6f8fa;
+  --border:   #e0e4e8;
+  --border2:  #d0d7de;
+  --text:     #1f2328;
+  --muted:    #57606a;
+  --hint:     #8b949e;
+}
+body.wifi-mode.wifi-light .az-section-label { color: #57606a; border-bottom-color: #e0e4e8; }
+body.wifi-mode.wifi-light #wpnav-overlay { background: rgba(255,255,255,0.96) !important; }
+body.wifi-mode.wifi-light #wifi-peers-flyout { background: #ffffff !important; border-left: 1px solid #e0e4e8; }
+body.wifi-mode.wifi-light #wifi-peers-flyout * { color: #1f2328 !important; }
+body.wifi-mode.wifi-light #wifi-peers-flyout [style*="color:#8b949e"] { color: #57606a !important; }
+body.wifi-mode.wifi-light #wifi-msg-flyout { background: #ffffff !important; }
+body.wifi-mode.wifi-light #wifi-msg-flyout * { color: #1f2328 !important; }
+/* Light theme — strip tab, MSG, PEERS */
+body.wifi-mode.wifi-light #wifi-strip-tab {
+  background: #f6f8fa !important; border-color: #e0e4e8 !important;
+}
+body.wifi-mode.wifi-light #wifi-strip-arrow { color: #57606a !important; }
+body.wifi-mode.wifi-light #wifi-strip { background: #ffffff !important; border-left-color: #e0e4e8 !important; }
+body.wifi-mode.wifi-light #wifi-strip [onclick="wifiToggleMsg()"],
+body.wifi-mode.wifi-light #wifi-strip [onclick="wifiTogglePeers()"] {
+  background: #f6f8fa !important; border-color: #d0d7de !important;
+}
+body.wifi-mode.wifi-light #wifi-strip [onclick="wifiToggleMsg()"] svg *,
+body.wifi-mode.wifi-light #wifi-strip [onclick="wifiTogglePeers()"] svg * { stroke: #57606a !important; }
+body.wifi-mode.wifi-light #wifi-strip [onclick="wifiToggleMsg()"] div,
+body.wifi-mode.wifi-light #wifi-strip [onclick="wifiTogglePeers()"] div { color: #57606a !important; }
+body.wifi-mode.wifi-light #wifi-msg-pip { border-color: #ffffff !important; }
+body.wifi-mode.wifi-light #wifi-peer-pip { border-color: #ffffff !important; }
+body.wifi-mode .az-menu-icon { background: #21262d !important; }
+body.wifi-mode #ap-ble-warning { display: none !important; }
+body.wifi-mode #menu-hotspot-icon[style*="accent"] { background: rgba(35,134,54,.15) !important; }
+body.wifi-mode .az-menu-icon svg path,
+body.wifi-mode .az-menu-icon svg circle,
+body.wifi-mode .az-menu-icon svg line,
+body.wifi-mode .az-menu-icon svg rect,
+body.wifi-mode .az-menu-icon svg ellipse { stroke: #8b949e !important; }
+body.wifi-mode .az-menu-icon svg circle[fill]:not([fill="none"]),
+body.wifi-mode .az-menu-icon svg path[fill]:not([fill="none"]) { fill: #8b949e !important; }
+/* Light theme — explicit light icon styling */
+body.wifi-mode.wifi-light .az-menu-icon { background: #f6f8fa !important; border: 1px solid #e0e4e8 !important; }
+body.wifi-mode.wifi-light .az-menu-icon svg path { stroke: #57606a !important; }
+body.wifi-mode.wifi-light .az-menu-icon svg circle { stroke: #57606a !important; }
+body.wifi-mode.wifi-light .az-menu-icon svg line { stroke: #57606a !important; }
+body.wifi-mode.wifi-light .az-menu-icon svg rect { stroke: #57606a !important; }
+body.wifi-mode.wifi-light .az-menu-icon svg circle[fill]:not([fill="none"]),
+body.wifi-mode.wifi-light .az-menu-icon svg path[fill]:not([fill="none"]) { fill: #57606a !important; }
+/* Override CSS vars so all panel inline styles using var(--surface) etc go dark */
+body.wifi-mode {
+  --surface:  #161b22;
+  --surface2: #21262d;
+  --border:   #21262d;
+  --border2:  #30363d;
+  --text:     #e6edf3;
+  --muted:    #8b949e;
+  --hint:     #6e7681;
+}
 .az-panel-hdr {
   padding: 14px 16px 12px;
   border-bottom: 1px solid var(--border);
@@ -654,14 +1129,15 @@ main {
 
 <!-- ── MAIN MENU ─────────────────────────────────────────────────────────── -->
 <div id="panel-main" class="az-panel">
+  <button id="panel-main-close" onclick="closeAllPanels()" style="display:none;">×</button>
   <div class="az-panel-hdr">
     <button class="az-back-btn" onclick="closeAllPanels()">✕</button>
-    <div class="az-panel-title">Azimuth</div>
+    <div class="az-panel-title">Menu</div>
   </div>
   <div class="az-panel-body">
-    <div class="az-section-label">Navigation & Group</div>
+    <div class="az-section-label" id="menu-section-nav">Navigation & Group</div>
 
-    <div class="az-menu-item" onclick="openPanel('panel-peers')">
+    <div class="az-menu-item" onclick="openPanel('panel-peers')" id="menu-item-peers">
       <div class="az-menu-icon" style="background:#EAF3DE;">
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <circle cx="6" cy="5" r="2.5" stroke="#4A7C59" stroke-width="1.4"/>
@@ -690,14 +1166,14 @@ main {
         </svg>
       </div>
       <div class="az-menu-info">
-        <div class="az-menu-name">Wayfinding</div>
+        <div class="az-menu-name" id="menu-wayf-name">Wayfinding</div>
         <div class="az-menu-desc" id="menu-wayf-desc">No waypoints set</div>
       </div>
       <span class="az-badge" id="menu-wayf-badge" style="display:none;"></span>
       <span class="az-menu-arrow">›</span>
     </div>
 
-    <div class="az-section-label">Recording</div>
+    <div class="az-section-label" id="menu-section-rec">Recording</div>
 
     <div class="az-menu-item" onclick="openPanel('panel-track')">
       <div class="az-menu-icon" style="background:#FCEBEB;">
@@ -707,7 +1183,7 @@ main {
         </svg>
       </div>
       <div class="az-menu-info">
-        <div class="az-menu-name">Track recording</div>
+        <div class="az-menu-name" id="menu-track-name">Track recording</div>
         <div class="az-menu-desc" id="menu-track-desc">Not recording</div>
       </div>
       <span class="az-menu-arrow">›</span>
@@ -722,16 +1198,33 @@ main {
         </svg>
       </div>
       <div class="az-menu-info">
-        <div class="az-menu-name">Saved routes</div>
+        <div class="az-menu-name" id="menu-routes-name">Saved routes</div>
         <div class="az-menu-desc" id="menu-routes-desc">No routes on device</div>
       </div>
       <span class="az-badge" id="menu-routes-badge" style="display:none;"></span>
       <span class="az-menu-arrow">›</span>
     </div>
 
-    <div class="az-section-label">Device</div>
+    <div class="az-section-label" id="menu-section-dev">Device</div>
 
-    <div class="az-menu-item" onclick="openPanel('panel-network')">
+    <div class="az-menu-item" onclick="openPanel('panel-hotspot')">
+      <div class="az-menu-icon" id="menu-hotspot-icon" style="background:#E6F1FB;">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M1.5 6C5 2.5 13 2.5 16.5 6" stroke="#185FA5" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M4 9C6.2 6.8 11.8 6.8 14 9" stroke="#185FA5" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M6.5 12C7.5 11 10.5 11 11.5 12" stroke="#185FA5" stroke-width="1.4" stroke-linecap="round"/>
+          <circle cx="9" cy="14.5" r="1.2" fill="#185FA5"/>
+        </svg>
+      </div>
+      <div class="az-menu-info">
+        <div class="az-menu-name">Hotspot</div>
+        <div class="az-menu-desc" id="menu-hotspot-desc">Start WiFi access point</div>
+      </div>
+      <span class="az-badge" id="menu-hotspot-badge" style="display:none;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent);">Active</span>
+      <span class="az-menu-arrow">›</span>
+    </div>
+
+    <div class="az-menu-item" onclick="openPanel('panel-lora')">
       <div class="az-menu-icon" style="background:#E6F1FB;">
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <path d="M2 6.5C5.5 3 12.5 3 16 6.5" stroke="#185FA5" stroke-width="1.4" stroke-linecap="round"/>
@@ -741,7 +1234,7 @@ main {
         </svg>
       </div>
       <div class="az-menu-info">
-        <div class="az-menu-name">Network & LoRa</div>
+        <div class="az-menu-name" id="menu-network-name">Network & LoRa</div>
         <div class="az-menu-desc" id="menu-network-desc">EU868 · 30s interval</div>
       </div>
       <span class="az-menu-arrow">›</span>
@@ -755,15 +1248,27 @@ main {
         </svg>
       </div>
       <div class="az-menu-info">
-        <div class="az-menu-name">Device settings</div>
-        <div class="az-menu-desc">Name, units, screen</div>
+        <div class="az-menu-name" id="menu-device-name">Device settings</div>
+        <div class="az-menu-desc" id="menu-device-desc">Name, units, screen</div>
       </div>
       <span class="az-menu-arrow">›</span>
     </div>
   </div>
+  <!-- Theme toggle as last menu item — WiFi mode only -->
+  <div class="az-menu-item" id="wifi-theme-footer" style="display:none;" onclick="wifiThemeToggle()">
+    <div class="az-menu-icon" id="wifi-theme-icon" style="background:#21262d;">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <circle cx="9" cy="9" r="7" stroke="#8b949e" stroke-width="1.4"/>
+        <path d="M9 2 A7 7 0 0 1 9 16 Z" fill="#8b949e" opacity=".6"/>
+      </svg>
+    </div>
+    <div class="az-menu-info">
+      <div class="az-menu-name" id="wifi-theme-name">Light theme</div>
+      <div class="az-menu-desc" id="wifi-theme-desc">Switch to white / green</div>
+    </div>
+    <span class="az-menu-arrow">›</span>
+  </div>
 </div>
-
-<!-- ── PEERS PANEL ──────────────────────────────────────────────────────── -->
 <div id="panel-peers" class="az-panel">
   <div class="az-panel-hdr">
     <button class="az-back-btn" onclick="openPanel('panel-main')">‹</button>
@@ -773,26 +1278,45 @@ main {
     </div>
   </div>
   <div class="az-panel-body" id="peer-list" style="padding:0;"></div>
-  <div class="az-panel-footer">
-    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--hint);margin-bottom:6px;">Send message</div>
-    <select id="msg-target-select" style="width:100%;padding:6px 8px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-family:var(--font);font-size:11px;margin-bottom:6px;">
-      <option value="BC">Broadcast to all</option>
-    </select>
-    <div style="display:flex;gap:6px;">
-      <input id="msg-text-input" type="text" maxlength="48" placeholder="Type a message…"
-        style="flex:1;padding:7px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-family:var(--font);font-size:12px;"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();sendLoraMessage()}"/>
-      <button onclick="sendLoraMessage()" style="padding:7px 14px;background:var(--accent);border:none;border-radius:7px;color:#fff;font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;">Send</button>
+  <div class="az-panel-footer" style="padding:0;display:flex;flex-direction:column;">
+    <!-- Chat log -->
+    <div id="msg-log" style="flex:1;overflow-y:auto;max-height:160px;padding:8px 12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;">
+      <div id="msg-log-list"></div>
     </div>
-    <div id="msg-log" style="display:none;max-height:100px;overflow-y:auto;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--hint);margin-bottom:4px;">Received</div>
-      <div id="msg-log-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+    <!-- Compose -->
+    <div style="padding:10px 16px;border-top:1px solid var(--border);">
+      <select id="msg-target-select" style="width:100%;padding:6px 8px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-family:var(--font);font-size:11px;margin-bottom:6px;">
+        <option value="BC">Broadcast to all</option>
+      </select>
+      <div style="display:flex;gap:6px;">
+        <input id="msg-text-input" type="text" maxlength="48" placeholder="Type a message…"
+          style="flex:1;padding:7px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-family:var(--font);font-size:12px;"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();sendLoraMessage()}"/>
+        <button onclick="sendLoraMessage()" style="padding:7px 14px;background:var(--accent);border:none;border-radius:7px;color:#fff;font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;">Send</button>
+      </div>
     </div>
   </div>
 </div>
 
 <!-- ── WAYFINDING PANEL ─────────────────────────────────────────────────── -->
 <div id="panel-wayf" class="az-panel">
+  <!-- WiFi mode: read-only waypoint list -->
+  <div id="wayf-wifi-view" style="display:none;flex-direction:column;height:100%;">
+    <div class="az-panel-hdr">
+      <button class="az-back-btn" onclick="openPanel('panel-main')">‹</button>
+      <div class="az-panel-title">Waypoints</div>
+    </div>
+    <div class="az-panel-body" style="padding:0;">
+      <div id="wayf-wifi-list" style="padding:0;">
+        <div style="padding:14px 16px;font-size:11px;color:var(--muted);line-height:1.5;">No waypoints saved on device.</div>
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid var(--border);">
+        <div style="font-size:10px;color:var(--hint);line-height:1.5;">Waypoints are managed via the Azimuth BLE app or device OLED menu.</div>
+      </div>
+    </div>
+  </div>
+  <!-- BLE mode: full wayfinding UI -->
+  <div id="wayf-ble-view" style="display:flex;flex-direction:column;height:100%;">
   <div class="az-wayf-banner" id="wayf-banner">
     <span id="wayf-banner-text">Wayfinding</span>
     <button class="az-wayf-exit-btn" onclick="showWayfConfirm()">Exit</button>
@@ -915,6 +1439,7 @@ main {
       <div style="font-size:10px;color:var(--hint);text-align:center;line-height:1.5;">"Add to queue" stages without broadcasting. "Add &amp; send now" broadcasts immediately.</div>
     </div>
   </div>
+  </div><!-- end wayf-ble-view -->
 </div>
 
 <!-- ── TRACK PANEL ──────────────────────────────────────────────────────── -->
@@ -1003,7 +1528,8 @@ main {
       </div>
       <span class="az-menu-arrow">›</span>
     </div>
-    <div class="az-menu-item" onclick="openPanel('panel-wifi')">
+    <!-- WiFi & weather — hidden in WiFi mode, shown in BLE mode -->
+    <div class="az-menu-item ble-only-item" onclick="openPanel('panel-wifi')">
       <div class="az-menu-icon" style="background:#E6F1FB;">
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <path d="M1.5 7C5 3.5 13 3.5 16.5 7" stroke="#185FA5" stroke-width="1.4" stroke-linecap="round"/>
@@ -1017,6 +1543,46 @@ main {
         <div class="az-menu-desc">Network, OWM key, refresh</div>
       </div>
       <span class="az-menu-arrow">›</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── HOTSPOT PANEL ─────────────────────────────────────────────────────── -->
+<div id="panel-hotspot" class="az-panel">
+  <div class="az-panel-hdr">
+    <button class="az-back-btn" onclick="openPanel('panel-main')">‹</button>
+    <div class="az-panel-title">Hotspot</div>
+  </div>
+  <div class="az-panel-body">
+    <div style="padding:14px 16px 0;">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--hint);margin-bottom:8px;">WiFi access point</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Start a hotspot on the device. Any phone can connect to the network and open the web app — no Bluetooth needed.</div>
+      <!-- Status card — toggled by apUpdateUI -->
+      <div id="ap-card-off" style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">Hotspot off</div>
+        <div style="font-size:11px;color:var(--hint);">Network: —</div>
+        <div style="font-size:11px;color:var(--hint);">Password: —</div>
+      </div>
+      <div id="ap-card-on" style="display:none;background:var(--accent-bg);border:1px solid var(--accent);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:6px;">● Hotspot active</div>
+        <div style="font-size:11px;color:#000000;margin-bottom:3px;">Network: <span id="ap-ssid" style="font-weight:600;color:#000000;"></span></div>
+        <div style="font-size:11px;color:#000000;margin-bottom:3px;">Password: <span id="ap-pass" style="font-weight:600;font-family:monospace;color:#000000;"></span></div>
+        <div style="font-size:11px;color:#000000;margin-bottom:3px;">Open: <span id="ap-url" style="font-weight:600;font-family:monospace;color:var(--accent);"></span></div>
+        <div id="ap-ip-row" style="font-size:11px;color:#000000;display:none;">IP: <span id="ap-ip" style="font-weight:600;font-family:monospace;color:#000000;"></span></div>
+      </div>
+      <!-- Warning shown in BLE mode before starting — hotspot disconnects device WiFi -->
+      <div id="ap-ble-warning" style="background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.25);border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+        <div style="font-size:10px;color:var(--muted);line-height:1.5;">Starting the hotspot disconnects the device from any saved WiFi network. Weather updates will pause until the hotspot is stopped.</div>
+      </div>
+      <!-- Warning shown in WiFi mode when active — stopping kills this connection -->
+      <div id="ap-wifi-warning" style="display:none;background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.25);border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+        <div style="font-size:10px;color:#58a6ff;line-height:1.5;">Stopping the hotspot will disconnect all connected devices including this browser.</div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;">
+        <button id="ap-toggle-btn" onclick="apToggle()" style="padding:9px 20px;background:var(--accent-bg);border:1.5px solid var(--accent);border-radius:9px;color:var(--accent);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;">Start hotspot</button>
+      </div>
+      <!-- Legacy hidden elements for backward compat -->
+      <div id="ap-status" style="display:none;"></div>
     </div>
   </div>
 </div>
@@ -1074,12 +1640,10 @@ main {
 <!-- ── LORA SETTINGS PANEL ──────────────────────────────────────────────── -->
 <div id="panel-lora" class="az-panel">
   <div class="az-panel-hdr">
-    <button class="az-back-btn" onclick="openPanel('panel-network')">&#x2039;</button>
+    <button class="az-back-btn" onclick="openPanel('panel-main')">&#x2039;</button>
     <div class="az-panel-title">LoRa settings</div>
   </div>
-  <div class="az-panel-body" style="padding:0;">
-    <div style="padding:14px 16px 12px;border-bottom:1px solid var(--border);">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--hint);margin-bottom:10px;">Region &amp; interval</div>
+  <div class="az-panel-body" style="padding:14px 16px;">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
         <label style="font-size:11px;color:var(--muted);white-space:nowrap;width:52px;">Region</label>
         <select id="lora-region-select" onchange="loraSettingsChanged()" style="flex:1;padding:6px 8px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:var(--font);font-size:11px;">
@@ -1112,7 +1676,7 @@ main {
 <!-- ── WIFI & WEATHER PANEL ─────────────────────────────────────────────── -->
 <div id="panel-wifi" class="az-panel">
   <div class="az-panel-hdr">
-    <button class="az-back-btn" onclick="openPanel('panel-network')">&#x2039;</button>
+    <button class="az-back-btn" onclick="openPanel('panel-main')">&#x2039;</button>
     <div class="az-panel-title">WiFi &amp; weather</div>
   </div>
   <div class="az-panel-body" style="padding:0;">
@@ -1327,6 +1891,19 @@ main {
 </div>
 
 <script>
+// Global error handler — shows JS errors visibly on screen for iOS debugging
+window.onerror = function(msg, src, line, col, err) {
+  var div = document.createElement('div');
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f85149;color:#fff;padding:10px;font-size:12px;z-index:99999;font-family:monospace;word-break:break-all;';
+  div.textContent = 'JS ERROR: ' + msg + ' (line ' + line + ')';
+  document.body.appendChild(div);
+};
+window.onunhandledrejection = function(e) {
+  var div = document.createElement('div');
+  div.style.cssText = 'position:fixed;top:40px;left:0;right:0;background:#d29922;color:#000;padding:10px;font-size:12px;z-index:99999;font-family:monospace;word-break:break-all;';
+  div.textContent = 'PROMISE ERROR: ' + (e.reason || e);
+  document.body.appendChild(div);
+};
 // ── State ──────────────────────────────────────────────────────────────────
 let drawerOpen = false;
 
@@ -1344,6 +1921,44 @@ function openPanel(id) {
   const menuBtn = document.getElementById('menu-btn');
   if (menuBtn) { menuBtn.style.borderColor = 'var(--accent)'; menuBtn.style.color = 'var(--accent)'; }
   drawerOpen = true;
+
+  // WiFi mode: stagger-animate visible menu items when opening panel-main
+  if (isWifiMode && id === 'panel-main') {
+    const body = document.querySelector('#panel-main .az-panel-body');
+    const themeFooter = document.getElementById('wifi-theme-footer');
+    const allItems = [];
+    if (body) allItems.push(...body.querySelectorAll('.az-menu-item'));
+    if (themeFooter) allItems.push(themeFooter);
+    const visible = allItems.filter(el => el.style.display !== 'none' && el.offsetParent !== null);
+    visible.forEach((el, i) => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(14px)';
+      el.style.transition = 'none';
+      setTimeout(() => {
+        el.style.transition = 'opacity .3s ease, transform .3s ease';
+        el.style.opacity = '1';
+        el.style.transform = 'translateY(0)';
+      }, 50 + i * 55);
+    });
+  }
+  if (id === 'panel-wayf') {
+    const wifiView = document.getElementById('wayf-wifi-view');
+    const bleView  = document.getElementById('wayf-ble-view');
+    if (isWifiMode) {
+      if (wifiView) wifiView.style.display = 'flex';
+      if (bleView)  bleView.style.display  = 'none';
+      wayfWifiRenderList();
+    } else {
+      if (wifiView) wifiView.style.display = 'none';
+      if (bleView)  bleView.style.display  = 'flex';
+    }
+  }
+
+  // Hotspot panel — show stop warning if in WiFi mode (stopping will disconnect)
+  if (id === 'panel-hotspot') {
+    const warning = document.getElementById('ap-wifi-warning');
+    if (warning) warning.style.display = (isWifiMode && apActive) ? 'block' : 'none';
+  }
 }
 
 function closeAllPanels() {
@@ -1584,6 +2199,1160 @@ let appAuthorised = false;
 let tracking      = false;
 let liveRoute     = [];
 let routeLayer    = null;
+
+// ── Radar view (WiFi AP mode — no internet map tiles) ────────────────────────
+// ── Radar — Canvas-based (WiFi AP mode) ──────────────────────────────────────
+const RADAR_ZOOM_LEVELS = [25, 50, 100, 200, 500, 1000, 2500, 5000];
+let radarZoomIdx    = 2;   // 100m default
+let radarAnimAngle  = 0;
+let radarAnimFrame  = null;
+let radarPinchDist  = null;
+let radarPinchAccum = 0;
+
+function radarMetresLabel(m) {
+  const useMiles = typeof deviceSettings !== 'undefined' && deviceSettings.spd === 1;
+  if (useMiles) {
+    const mi = m / 1609.34;
+    return mi < 0.1 ? Math.round(m * 3.28084) + 'ft' : mi.toFixed(mi < 1 ? 2 : 1) + 'mi';
+  }
+  return m >= 1000 ? (m/1000).toFixed(m%1000===0?0:1) + 'km' : m + 'm';
+}
+
+function radarZoomIn()  { if (radarZoomIdx > 0) { radarZoomIdx--; } }
+function radarZoomOut() { if (radarZoomIdx < RADAR_ZOOM_LEVELS.length-1) { radarZoomIdx++; } }
+
+function radarBearing(lat1, lon1, lat2, lon2) {
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const la1 = lat1 * Math.PI / 180, la2 = lat2 * Math.PI / 180;
+  const y = Math.sin(dLon) * Math.cos(la2);
+  const x = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dLon);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function radarDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function radarDrawCanvas() {
+  const div    = document.getElementById('radar-div');
+  const canvas = document.getElementById('radar-canvas');
+  if (!div || !canvas) return;
+  const W = div.clientWidth, H = div.clientHeight;
+  if (!W || !H) return;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const cx = W/2, cy = H/2;
+  const outerR = Math.min(W, H) * 0.43;
+  const outerM = RADAR_ZOOM_LEVELS[radarZoomIdx];
+
+  // Theme colours
+  const light = _wifiRadarLight;
+  const bgCol      = light ? '#eef1f5'              : '#0d1117';
+  const crossCol   = light ? 'rgba(0,0,0,0.08)'     : '#21262d';
+  const ringInner  = light ? 'rgba(26,127,55,0.3)'  : 'rgba(35,134,54,0.25)';
+  const ringOuter  = light ? 'rgba(26,127,55,0.6)'  : 'rgba(35,134,54,0.5)';
+  const sweepCol   = light ? '26,127,55'             : '35,134,54';
+  const lblFgInner = light ? 'rgba(26,127,55,0.7)'  : 'rgba(63,185,80,0.9)';
+  const lblFgOuter = light ? '#1a7f37'               : '#3fb950';
+  const dotCol     = light ? '#1a7f37'               : '#238636';
+  const peerActive = light ? 'rgba(26,127,55,0.85)' : 'rgba(35,134,54,0.85)';
+  const peerStale  = light ? 'rgba(87,96,106,0.45)' : 'rgba(139,148,158,0.5)';
+  const peerTxt    = light ? '#1f2328'               : '#c9d1d9';
+  const peerMuted  = light ? '#57606a'               : '#8b949e';
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = bgCol; ctx.fillRect(0, 0, W, H);
+
+  // Crosshairs
+  ctx.strokeStyle = crossCol; ctx.lineWidth = 0.5; ctx.setLineDash([2, 3]);
+  ctx.beginPath(); ctx.moveTo(cx, 4); ctx.lineTo(cx, H-4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(4, cy); ctx.lineTo(W-4, cy); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Inner ring — outerM/2
+  const innerR = outerR * 0.5;
+  const innerM = outerM / 2;
+  ctx.strokeStyle = ringInner; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx, cy, innerR, 0, Math.PI*2); ctx.stroke();
+
+  // Outer ring — outerM
+  ctx.strokeStyle = ringOuter; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, outerR, 0, Math.PI*2); ctx.stroke();
+
+  // OEO logo subtly at centre
+  const logoR = outerR * 0.13;
+  const logoAlpha = light ? 0.12 : 0.15;
+  ctx.strokeStyle = `rgba(${sweepCol},${logoAlpha})`;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(cx, cy, logoR, 0, Math.PI*2); ctx.stroke();
+  ctx.setLineDash([1.5, 2.5]);
+  ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.arc(cx, cy, logoR * 0.6, 0, Math.PI*2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(cx, cy - logoR * 1.4); ctx.lineTo(cx, cy - logoR); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, logoR * 1.25, -Math.PI*0.15, Math.PI*0.55); ctx.stroke();
+  ctx.fillStyle = `rgba(${sweepCol},${logoAlpha * 2})`;
+  ctx.beginPath(); ctx.arc(cx, cy, logoR * 0.18, 0, Math.PI*2); ctx.fill();
+
+  // Ring labels — top of each ring, no background rect
+  const innerLbl = radarMetresLabel(innerM);
+  const outerLbl = radarMetresLabel(outerM);
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = lblFgInner;
+  ctx.fillText(innerLbl, cx, cy - innerR - 5);
+  ctx.fillStyle = lblFgOuter;
+  ctx.fillText(outerLbl, cx, cy - outerR - 5);
+
+  // Sweep
+  for (let i = 8; i >= 0; i--) {
+    const a = (radarAnimAngle - i*7) * Math.PI / 180;
+    ctx.strokeStyle = `rgba(${sweepCol},${(0.5 - i*0.055).toFixed(2)})`;
+    ctx.lineWidth = i === 0 ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + outerR*Math.sin(a), cy - outerR*Math.cos(a));
+    ctx.stroke();
+  }
+
+  // Device dot
+  ctx.fillStyle = dotCol;
+  ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = light ? 'rgba(26,127,55,0.35)' : 'rgba(35,134,54,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI*2); ctx.stroke();
+
+  // Peers
+  const devLat = lastData && lastData.lat;
+  const devLon = lastData && lastData.lon;
+  if (devLat && devLon) {
+    Object.entries(loraPeers).forEach(([id, p]) => {
+      if (!p.lat || !p.lon || (Date.now() - p.ts) > LORA_EXPIRE_MS) return;
+      const dist = radarDistance(devLat, devLon, p.lat, p.lon);
+      const bear = radarBearing(devLat, devLon, p.lat, p.lon);
+      const r    = Math.min(dist / outerM, 1.02) * outerR;
+      const bx   = cx + r * Math.sin(bear * Math.PI/180);
+      const by   = cy - r * Math.cos(bear * Math.PI/180);
+      const isStale = (Date.now() - p.ts) > LORA_STALE_MS;
+      ctx.fillStyle = isStale ? peerStale : peerActive;
+      ctx.beginPath(); ctx.arc(bx, by, 7, 0, Math.PI*2); ctx.fill();
+      const shortName = (p.name || id).replace('Azimuth-', '');
+      ctx.fillStyle = isStale ? peerMuted : peerTxt;
+      ctx.font = '10px monospace'; ctx.textAlign = 'left';
+      ctx.fillText(shortName, bx+10, by-1);
+      ctx.fillStyle = peerMuted; ctx.font = '9px monospace';
+      ctx.fillText(radarMetresLabel(Math.round(dist)), bx+10, by+11);
+    });
+  }
+}
+
+
+function radarAnimate() {
+  radarAnimAngle = (radarAnimAngle + 1.2) % 360;
+  radarDrawCanvas();
+  radarAnimFrame = requestAnimationFrame(radarAnimate);
+}
+
+function radarStart() {
+  const ui = document.getElementById('wifi-ui');
+  if (ui) { ui.style.display = 'flex'; }
+  // Stat and coord bars are now inside wifi-ui flex column — no separate show needed
+  // Hide BLE-mode elements
+  const statsOv = document.getElementById('stats-overlay');
+  if (statsOv) statsOv.style.display = 'none';
+  const locBtn = document.getElementById('locate-btn');
+  if (locBtn) locBtn.style.display = 'none';
+  const radOvBtn = document.getElementById('radar-overlay-btn');
+  if (radOvBtn) radOvBtn.style.display = 'none';
+  // Hide Peers from hamburger menu in WiFi mode
+  const menuPeers = document.getElementById('menu-item-peers');
+  if (menuPeers) menuPeers.style.display = 'none';
+  if (!radarAnimFrame) radarAnimate();
+  // Wire pinch zoom on radar-div
+  const rd = document.getElementById('radar-div');
+  if (rd && !rd._pinchWired) {
+    rd._pinchWired = true;
+    rd.addEventListener('touchstart', e => {
+      if (e.touches.length === 2) {
+        radarPinchDist  = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+        radarPinchAccum = 0;
+        e.preventDefault();
+      }
+    }, { passive: false });
+    rd.addEventListener('touchmove', e => {
+      if (e.touches.length === 2 && radarPinchDist !== null) {
+        const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+        radarPinchAccum += d - radarPinchDist;
+        radarPinchDist = d;
+        if (radarPinchAccum > 30)  { radarZoomIn();  radarPinchAccum = 0; }
+        if (radarPinchAccum < -30) { radarZoomOut(); radarPinchAccum = 0; }
+        e.preventDefault();
+      }
+    }, { passive: false });
+    rd.addEventListener('touchend', () => { radarPinchDist = null; radarPinchAccum = 0; });
+    rd.addEventListener('wheel', e => {
+      e.preventDefault();
+      if (e.deltaY < 0) radarZoomIn(); else radarZoomOut();
+    }, { passive: false });
+  }
+  compassStart();
+}
+
+function radarStop() {
+  if (radarAnimFrame) { cancelAnimationFrame(radarAnimFrame); radarAnimFrame = null; }
+  const ui = document.getElementById('wifi-ui');
+  if (ui) ui.style.display = 'none';
+}
+
+// ── Activity log collapse ─────────────────────────────────────────────────────
+function logToggle() {
+  const panel = document.getElementById('log-panel');
+  const arrow = document.getElementById('log-toggle-arrow');
+  if (!panel) return;
+  const isWifi = document.body.classList.contains('wifi-mode');
+  if (isWifi) {
+    const expanded = panel.classList.toggle('expanded');
+    panel.classList.toggle('collapsed', !expanded);
+    if (arrow) arrow.style.transform = expanded ? 'rotate(0deg)' : 'rotate(-90deg)';
+  } else {
+    const collapsed = panel.classList.toggle('collapsed');
+    if (arrow) arrow.style.transform = collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+  }
+}
+
+// ── WiFi light theme ──────────────────────────────────────────────────────────
+let wifiLightTheme = false;
+function wifiThemeToggle() {
+  wifiLightTheme = !wifiLightTheme;
+  document.body.classList.toggle('wifi-light', wifiLightTheme);
+  _wifiRadarLight = wifiLightTheme;
+  // Swap injected panel style for light/dark
+  const s = document.getElementById('wifi-panel-override');
+  if (s) {
+    if (wifiLightTheme) {
+      s.textContent = s.textContent
+        .replace(/--text: #c9d1d9/g, '--text: #1f2328')
+        .replace(/--muted: #8b949e/g, '--muted: #57606a')
+        .replace(/--hint: #6e7681/g, '--hint: #8b949e')
+        .replace(/--surface: #161b22/g, '--surface: #ffffff')
+        .replace(/--surface2: #21262d/g, '--surface2: #f6f8fa')
+        .replace(/--border: #21262d/g, '--border: #e0e4e8')
+        .replace(/--border2: #30363d/g, '--border2: #d0d7de')
+        .replace(/#0d1117/g, '#ffffff')
+        .replace(/#161b22/g, '#ffffff')
+        .replace(/#21262d/g, '#f0f0f0')
+        .replace(/#30363d/g, '#d0d7de')
+        .replace(/#e6edf3/g, '#1f2328')
+        .replace(/#c9d1d9/g, '#1f2328')
+        .replace(/#8b949e/g, '#57606a')
+        .replace(/rgba\(255,255,255,\.1\)/g, 'rgba(0,0,0,.1)')
+        .replace(/rgba\(255,255,255,\.07\)/g, 'rgba(0,0,0,.06)')
+        .replace(/rgba\(255,255,255,\.14\)/g, 'rgba(0,0,0,.1)')
+        .replace(/rgba\(13,17,23,0\.97\)/g, '#ffffff')
+        ;
+      const closeBtn = document.getElementById('panel-main-close');
+      if (closeBtn) { closeBtn.style.background = 'rgba(0,0,0,.1)'; closeBtn.style.color = '#1f2328'; }
+      // Force panel-main to solid white explicitly
+      const pm = document.getElementById('panel-main');
+      if (pm) { pm.style.background = '#ffffff'; pm.style.border = '1px solid #d0d7de'; pm.style.boxShadow = '0 4px 24px rgba(0,0,0,.08)'; }
+      // Light theme peers flyout
+      const pf = document.getElementById('wifi-peers-flyout');
+      if (pf) { pf.style.background = '#ffffff'; }
+      const mf = document.getElementById('wifi-msg-flyout');
+      if (mf) { mf.style.background = '#ffffff'; }
+    } else {
+      // Re-inject original dark style
+      document.head.removeChild(s);
+      const fresh = document.createElement('style');
+      fresh.id = 'wifi-panel-override';
+      fresh.textContent = window._wifiDarkCSS;
+      document.head.appendChild(fresh);
+      // Re-append hotspot icon style AFTER panel override so it wins
+      const hotspotS = document.getElementById('wifi-hotspot-icon-style');
+      if (hotspotS) { document.head.removeChild(hotspotS); document.head.appendChild(hotspotS); }
+      const closeBtn = document.getElementById('panel-main-close');
+      if (closeBtn) { closeBtn.style.background = ''; closeBtn.style.color = ''; }
+      const pm = document.getElementById('panel-main');
+      if (pm) { pm.style.background = ''; pm.style.border = ''; pm.style.boxShadow = ''; }
+      const pf2 = document.getElementById('wifi-peers-flyout');
+      if (pf2) pf2.style.background = '';
+      const mf2 = document.getElementById('wifi-msg-flyout');
+      if (mf2) mf2.style.background = '';
+    }
+  }
+  // Update radar background directly
+  const radarDiv = document.getElementById('radar-div');
+  if (radarDiv) radarDiv.style.background = wifiLightTheme ? '#eef1f5' : '#0d1117';
+  // Update WiFi UI and strip backgrounds
+  const ui = document.getElementById('wifi-ui');
+  if (ui) ui.style.background = wifiLightTheme ? '#f8f9fa' : '#0d1117';
+  const strip = document.getElementById('wifi-strip');
+  if (strip) strip.style.background = wifiLightTheme ? '#ffffff' : '#0d1117';
+  strip && (strip.style.borderLeftColor = wifiLightTheme ? '#e0e4e8' : '#21262d');
+  const statBar  = document.getElementById('wifi-stat-bar');
+  if (statBar)  { statBar.style.background = wifiLightTheme ? '#ffffff' : '#0d1117'; statBar.style.borderTopColor = wifiLightTheme ? '#e0e4e8' : '#21262d'; }
+  const coordBar = document.getElementById('wifi-coord-bar');
+  if (coordBar) { coordBar.style.background = wifiLightTheme ? '#f6f8fa' : '#0d1117'; coordBar.style.borderTopColor = wifiLightTheme ? '#e0e4e8' : '#161b22'; }
+  // Stat bar text colours
+  const statTxt = wifiLightTheme ? '#1f2328' : '#e6edf3';
+  const statMut = wifiLightTheme ? '#57606a' : '#8b949e';
+  const coordVal = wifiLightTheme ? '#1f2328' : '#c9d1d9';
+  ['wifi-stat-spd','wifi-stat-alt','wifi-stat-hdg','wifi-stat-bat'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.color = statTxt;
+  });
+  ['wifi-stat-spd-unit'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.color = statMut;
+  });
+  ['wifi-coord-lat','wifi-coord-lon','wifi-coord-sats'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.color = coordVal;
+  });
+  // Header
+  const hdr = document.querySelector('.app-header') || document.querySelector('header');
+  if (hdr) {
+    hdr.style.background = wifiLightTheme ? '#ffffff' : '#0d1117';
+    hdr.style.borderBottomColor = wifiLightTheme ? '#e0e4e8' : '#21262d';
+  }
+  // Update theme menu item label
+  // Update theme menu item
+  const themeDesc = document.getElementById('wifi-theme-desc');
+  if (themeDesc) themeDesc.textContent = wifiLightTheme ? 'Switch to black / green' : 'Switch to white / green';
+  const themeName = document.getElementById('wifi-theme-name');
+  if (themeName) themeName.textContent = wifiLightTheme ? 'Dark theme' : 'Light theme';
+  const themeIcon = document.getElementById('wifi-theme-icon');
+  if (themeIcon) themeIcon.style.background = wifiLightTheme ? 'rgba(0,0,0,.06)' : 'rgba(255,255,255,.07)';
+}
+let _wifiRadarLight = false;
+let wifiStripOpen = true;
+function wifiToggleStrip() {
+  wifiStripOpen = !wifiStripOpen;
+  const wrap  = document.getElementById('wifi-strip-wrap');
+  const arrow = document.getElementById('wifi-strip-arrow');
+  if (wrap)  wrap.style.width  = wifiStripOpen ? '76px' : '0px';
+  if (arrow) arrow.style.transform = wifiStripOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+  // Flyout widths follow strip
+  ['wifi-peers-flyout','wifi-msg-flyout'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.right = wifiStripOpen ? '76px' : '0px';
+  });
+}
+
+// ── Waypoints WiFi read-only view ─────────────────────────────────────────────
+function wayfWifiRenderList() {
+  const list = document.getElementById('wayf-wifi-list');
+  if (!list) return;
+  if (!wpList || !wpList.length) {
+    list.innerHTML = '<div style="padding:14px 16px;font-size:11px;color:var(--muted);">No waypoints saved on device.</div>';
+    return;
+  }
+  list.innerHTML = wpList.map(wp => `
+    <div style="padding:11px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+      <div style="width:28px;height:28px;border-radius:7px;background:var(--accent-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1L13 4.5v5L7 13 1 9.5v-5z" stroke="var(--accent)" stroke-width="1.2" fill="none"/><circle cx="7" cy="7" r="1.5" fill="var(--accent)"/></svg>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text);">${wp.name || 'Waypoint'}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:monospace;">${wp.lat.toFixed(5)} · ${wp.lon.toFixed(5)}</div>
+      </div>
+    </div>`).join('');
+}
+let wifiMsgOpen   = false;
+let wifiPeersOpen = false;
+
+function wifiCloseAll() {
+  wifiMsgOpen = false; wifiPeersOpen = false;
+  const mf = document.getElementById('wifi-msg-flyout');
+  const pf = document.getElementById('wifi-peers-flyout');
+  const ov = document.getElementById('wifi-overlay');
+  if (mf) { mf.style.display = 'none'; mf.style.transform = 'translateX(100%)'; }
+  if (pf) { pf.style.display = 'none'; pf.style.transform = 'translateX(100%)'; }
+  if (ov) ov.style.display = 'none';
+}
+
+function wifiToggleMsg() {
+  wifiPeersOpen = false;
+  const pf = document.getElementById('wifi-peers-flyout');
+  if (pf) { pf.style.display = 'none'; pf.style.transform = 'translateX(100%)'; }
+  wifiMsgOpen = !wifiMsgOpen;
+  const mf = document.getElementById('wifi-msg-flyout');
+  const ov = document.getElementById('wifi-overlay');
+  if (mf) {
+    mf.style.display = wifiMsgOpen ? 'flex' : 'none';
+    setTimeout(() => { if (mf) mf.style.transform = wifiMsgOpen ? 'translateX(0)' : 'translateX(100%)'; }, 10);
+  }
+  if (ov) ov.style.display = wifiMsgOpen ? 'block' : 'none';
+  if (wifiMsgOpen) {
+    // Clear unread pip
+    const pip = document.getElementById('wifi-msg-pip');
+    if (pip) pip.style.display = 'none';
+    // Sync message log
+    wifiSyncMsgLog();
+  }
+}
+
+function wifiTogglePeers() {
+  wifiMsgOpen = false;
+  const mf = document.getElementById('wifi-msg-flyout');
+  if (mf) { mf.style.display = 'none'; mf.style.transform = 'translateX(100%)'; }
+  wifiPeersOpen = !wifiPeersOpen;
+  const pf = document.getElementById('wifi-peers-flyout');
+  const ov = document.getElementById('wifi-overlay');
+  if (pf) {
+    pf.style.display = wifiPeersOpen ? 'flex' : 'none';
+    setTimeout(() => { if (pf) pf.style.transform = wifiPeersOpen ? 'translateX(0)' : 'translateX(100%)'; }, 10);
+  }
+  if (ov) ov.style.display = wifiPeersOpen ? 'block' : 'none';
+  if (wifiPeersOpen) wifiRenderPeers();
+}
+
+function wifiSyncMsgLog() {
+  const log = document.getElementById('wifi-msg-log');
+  if (!log) return;
+  log.innerHTML = '';
+  loraMessages.forEach(m => {
+    const el = document.createElement('div');
+    el.style.cssText = `display:flex;flex-direction:column;align-items:${m.sent?'flex-end':'flex-start'};margin-bottom:2px;`;
+    const bubble = document.createElement('div');
+    bubble.style.cssText = `max-width:85%;padding:6px 10px;border-radius:${m.sent?'12px 12px 2px 12px':'12px 12px 12px 2px'};font-size:11px;line-height:1.4;${m.sent?'background:#238636;color:#fff;':'background:#21262d;color:#e6edf3;'}`;
+    bubble.textContent = m.text;
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size:8px;color:#8b949e;margin-top:2px;';
+    const ts = m.ts.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false});
+    meta.textContent = m.sent ? ts : `${m.name||m.from} · ${ts}`;
+    el.appendChild(bubble); el.appendChild(meta);
+    log.appendChild(el);
+  });
+  log.scrollTop = log.scrollHeight;
+}
+
+function wifiSendMessage() {
+  const input = document.getElementById('wifi-msg-input');
+  if (!input || !input.value.trim()) return;
+  const text = input.value.trim();
+  sendCmd('SENDMSG:' + text).catch(() => {});
+  loraMessages.push({ from:'me', name:'Me', text, ts:new Date(), sent:true });
+  input.value = '';
+  wifiSyncMsgLog();
+}
+
+function wifiRenderPeers() {
+  const list = document.getElementById('wifi-peers-list');
+  const title = document.getElementById('wifi-peers-title');
+  if (!list) return;
+  const active = Object.entries(loraPeers).filter(([,p]) => (Date.now()-p.ts) < LORA_EXPIRE_MS);
+  if (title) title.textContent = active.length + ' peer' + (active.length!==1?'s':'') + ' in range';
+  list.innerHTML = '';
+  if (!active.length) {
+    list.innerHTML = '<div style="font-size:11px;color:#8b949e;text-align:center;padding:20px;">No peers in range</div>';
+    return;
+  }
+  active.forEach(([id, p]) => {
+    const isStale = (Date.now()-p.ts) > LORA_STALE_MS;
+    const dist = (lastData && lastData.lat && p.lat) ? radarDistance(lastData.lat,lastData.lon,p.lat,p.lon) : null;
+    const bear = (lastData && lastData.lat && p.lat) ? radarBearing(lastData.lat,lastData.lon,p.lat,p.lon) : null;
+    const shortName = (p.name||id).replace('Azimuth-','');
+    const secAgo = Math.round((Date.now()-p.ts)/1000);
+    const timeStr = secAgo < 60 ? secAgo+'s ago' : Math.round(secAgo/60)+'m ago';
+    const batPct = p.bat === 255 ? null : p.bat;
+    const batColor = !batPct ? '#8b949e' : batPct > 50 ? '#3fb950' : batPct > 20 ? '#d29922' : '#f85149';
+    const card = document.createElement('div');
+    const cardBg = wifiLightTheme ? '#f6f8fa' : '#0d1117'; const cardBorder = wifiLightTheme ? (isStale?'#d0d7de':'#c8c8c8') : (isStale?'#30363d':'#21262d'); card.style.cssText = `background:${cardBg};border:1px solid ${cardBorder};border-radius:10px;padding:8px 10px;opacity:${isStale?0.65:1};`;
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:11px;font-weight:600;color:${wifiLightTheme?'#1f2328':'#e6edf3'};">${shortName}</span>
+        <span style="font-size:8px;color:${isStale?'#8b949e':'#3fb950'};background:${isStale?(wifiLightTheme?'rgba(0,0,0,.06)':'rgba(139,148,158,.1)'):(wifiLightTheme?'rgba(26,127,55,.1)':'rgba(63,185,80,.1)')};border:1px solid ${isStale?(wifiLightTheme?'rgba(0,0,0,.15)':'rgba(139,148,158,.25)'):(wifiLightTheme?'rgba(26,127,55,.25)':'rgba(63,185,80,.25)')};border-radius:5px;padding:1px 5px;">${isStale?'Last seen '+timeStr:'Active · '+timeStr}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:6px;">
+        <div style="text-align:center;"><div style="font-size:7px;color:#8b949e;text-transform:uppercase;">Dist</div><div style="font-size:10px;font-weight:600;color:${wifiLightTheme?'#1f2328':'#e6edf3'};font-family:monospace;">${dist!==null?radarMetresLabel(Math.round(dist)):'—'}</div></div>
+        <div style="text-align:center;"><div style="font-size:7px;color:#8b949e;text-transform:uppercase;">Bearing</div><div style="font-size:10px;font-weight:600;color:${wifiLightTheme?'#1f2328':'#e6edf3'};font-family:monospace;">${bear!==null?bear.toFixed(0)+'°':'—'}</div></div>
+        <div style="text-align:center;"><div style="font-size:7px;color:#8b949e;text-transform:uppercase;">Bat</div><div style="font-size:10px;font-weight:600;color:${batColor};font-family:monospace;">${batPct!==null?batPct+'%':'⚡'}</div></div>
+      </div>
+      ${batPct!==null?`<div style="height:3px;background:${wifiLightTheme?'#e0e4e8':'#21262d'};border-radius:2px;overflow:hidden;margin-bottom:6px;"><div style="height:100%;width:${batPct}%;background:${batColor};border-radius:2px;"></div></div>`:''}
+      <button onclick="wpNavStart({name:'${shortName}',lat:${p.lat||0},lon:${p.lon||0}});wifiCloseAll();" style="width:100%;padding:5px;background:transparent;border:1px solid ${isStale?(wifiLightTheme?'#d0d7de':'#30363d'):(wifiLightTheme?'#1a7f37':'#238636')};border-radius:7px;color:${isStale?(wifiLightTheme?'#57606a':'#8b949e'):(wifiLightTheme?'#1a7f37':'#3fb950')};font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1L9 5L5 9M1 5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Navigate to ${shortName}
+      </button>`;
+    list.appendChild(card);
+  });
+}
+
+function wifiUpdateStripPips() {
+  // Peer pip
+  const peerPip = document.getElementById('wifi-peer-pip');
+  if (peerPip) {
+    const count = Object.values(loraPeers).filter(p => (Date.now()-p.ts) < LORA_EXPIRE_MS).length;
+    peerPip.textContent = count;
+    peerPip.style.display = count > 0 ? 'flex' : 'none';
+  }
+}
+
+function wifiUpdateStrip(d) {
+  // Compass needle updated by deviceorientation handler
+  // Weather
+  if (d && d.wx) {
+    const wx = d.wx;
+    const useFt = deviceSettings && deviceSettings.spd === 1;
+    const temp = useFt ? (wx.t*9/5+32).toFixed(0)+'°F' : wx.t.toFixed(0)+'°C';
+    const wind = useFt ? (wx.w*0.621371).toFixed(0)+'mph' : wx.w.toFixed(0)+'km/h';
+    const icon = compassWxIcon(wx.id);
+    const wxSec = document.getElementById('wifi-wx-section');
+    const wxDiv = document.getElementById('wifi-wx-divider');
+    if (wxSec) wxSec.style.display = 'flex';
+    if (wxDiv) wxDiv.style.display = 'block';
+    const iconEl  = document.getElementById('wifi-wx-icon');
+    const tempEl  = document.getElementById('wifi-wx-temp');
+    const windEl  = document.getElementById('wifi-wx-wind');
+    const humEl   = document.getElementById('wifi-wx-hum');
+    if (iconEl) iconEl.textContent = icon;
+    if (tempEl) tempEl.textContent = temp;
+    if (windEl) windEl.textContent = (wx.wd||'') + ' ' + wind;
+    if (humEl)  humEl.textContent  = wx.h + '% hum';
+  }
+  // Stat bar
+  if (d) {
+    const useMph   = deviceSettings && deviceSettings.spd === 1;
+    const useFtAlt = deviceSettings && deviceSettings.elv === 1;
+    const spdVal   = useMph ? (d.spd*0.621371).toFixed(1) : d.spd.toFixed(1);
+    const spdUnit  = useMph ? 'mph' : 'km/h';
+    const altVal   = useFtAlt ? (d.alt*3.28084).toFixed(0)+' ft' : d.alt.toFixed(0)+' m';
+    const hdg      = d.hdg ? d.hdg.toFixed(0)+'° '+toCardinal(d.hdg) : '—';
+    const bat      = d.usb ? '⚡' : (d.bat||'—')+'%';
+    const sEl = id => document.getElementById(id);
+    if (sEl('wifi-stat-spd'))      sEl('wifi-stat-spd').textContent      = spdVal;
+    if (sEl('wifi-stat-spd-unit')) sEl('wifi-stat-spd-unit').textContent = spdUnit;
+    if (sEl('wifi-stat-alt'))      sEl('wifi-stat-alt').textContent      = altVal;
+    if (sEl('wifi-stat-hdg'))      sEl('wifi-stat-hdg').textContent      = hdg;
+    if (sEl('wifi-stat-bat'))      sEl('wifi-stat-bat').textContent      = bat;
+    if (sEl('wifi-coord-lat'))     sEl('wifi-coord-lat').textContent     = d.lat ? d.lat.toFixed(5) : '—';
+    if (sEl('wifi-coord-lon'))     sEl('wifi-coord-lon').textContent     = d.lon ? d.lon.toFixed(5) : '—';
+    if (sEl('wifi-coord-sats'))    sEl('wifi-coord-sats').textContent    = d.sats || '—';
+  }
+  wifiUpdateStripPips();
+}
+
+// ── Map radar overlay (BLE mode — rings over street map) ──────────────────────
+let mapRadarActive    = false;
+let mapRadarAnimFrame = null;
+let mapRadarAngle     = 0;
+
+function mapRadarToggle() {
+  mapRadarActive = !mapRadarActive;
+  const canvas = document.getElementById('map-radar-canvas');
+  const btn    = document.getElementById('radar-overlay-btn');
+  if (!canvas) return;
+  if (mapRadarActive) {
+    canvas.style.display = 'block';
+    if (btn) { btn.style.borderColor = 'var(--accent)'; btn.style.color = 'var(--accent)'; btn.style.background = 'var(--accent-bg)'; }
+    mapRadarAnimate();
+  } else {
+    canvas.style.display = 'none';
+    if (btn) { btn.style.borderColor = ''; btn.style.color = ''; btn.style.background = ''; }
+    if (mapRadarAnimFrame) { cancelAnimationFrame(mapRadarAnimFrame); mapRadarAnimFrame = null; }
+  }
+}
+
+function mapRadarDrawOverlay() {
+  const canvas = document.getElementById('map-radar-canvas');
+  if (!canvas || !mapRadarActive) return;
+  if (!lastData || !lastData.fix) return;
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  if (!W || !H) return;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  // Get device pixel position on map
+  if (!map) return;
+  const pos = map.latLngToContainerPoint([lastData.lat, lastData.lon]);
+  const cx = pos.x, cy = pos.y;
+
+  // Calculate metres-per-pixel from map zoom
+  const metrPerPx = 40075016.686 * Math.cos(lastData.lat * Math.PI/180) / Math.pow(2, map.getZoom()+8);
+  const ring1R = 50 / metrPerPx;   // 50m ring
+  const ring2R = 200 / metrPerPx;  // 200m ring
+
+  // Only draw rings if they're a reasonable size
+  if (ring1R < 20 || ring2R > Math.max(W,H) * 2) return;
+
+  // Inner ring 50m
+  ctx.strokeStyle = 'rgba(35,134,54,0.35)'; ctx.lineWidth = 1.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.arc(cx, cy, ring1R, 0, Math.PI*2); ctx.stroke();
+  // Outer ring 200m
+  ctx.strokeStyle = 'rgba(35,134,54,0.25)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, ring2R, 0, Math.PI*2); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Range labels
+  ctx.fillStyle = 'rgba(63,185,80,0.7)'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'left';
+  ctx.fillText('50m', cx + ring1R + 3, cy - 3);
+  ctx.fillText('200m', cx + ring2R + 3, cy - 3);
+
+  // Sweep
+  for (let i = 6; i >= 0; i--) {
+    const a = (mapRadarAngle - i*8) * Math.PI/180;
+    ctx.strokeStyle = `rgba(35,134,54,${(0.4-i*0.06).toFixed(2)})`;
+    ctx.lineWidth = i===0 ? 1.5 : 0.8;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + ring2R*Math.sin(a), cy - ring2R*Math.cos(a));
+    ctx.stroke();
+  }
+
+  // Device dot
+  ctx.fillStyle = 'rgba(35,134,54,0.9)';
+  ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(35,134,54,0.4)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI*2); ctx.stroke();
+
+  // Peer blips with distance rings
+  Object.entries(loraPeers).forEach(([id, p]) => {
+    if (!p.lat || !p.lon || (Date.now()-p.ts) > LORA_EXPIRE_MS) return;
+    const ppos = map.latLngToContainerPoint([p.lat, p.lon]);
+    const isStale = (Date.now()-p.ts) > LORA_STALE_MS;
+    const dist = radarDistance(lastData.lat, lastData.lon, p.lat, p.lon);
+    const shortName = (p.name||id).replace('Azimuth-','');
+    // Blip
+    ctx.fillStyle = isStale ? 'rgba(139,148,158,0.6)' : 'rgba(35,134,54,0.85)';
+    ctx.beginPath(); ctx.arc(ppos.x, ppos.y, 7, 0, Math.PI*2); ctx.fill();
+    // Label
+    ctx.fillStyle = isStale ? '#8b949e' : '#ffffff';
+    ctx.font = 'bold 9px monospace'; ctx.textAlign = 'left';
+    ctx.fillText(shortName + ' ' + radarMetresLabel(Math.round(dist)), ppos.x+10, ppos.y+4);
+  });
+}
+
+function mapRadarAnimate() {
+  mapRadarAngle = (mapRadarAngle + 1.5) % 360;
+  mapRadarDrawOverlay();
+  mapRadarAnimFrame = requestAnimationFrame(mapRadarAnimate);
+}
+let compassActive  = false;
+let compassHeading = 0;
+let wpNavActive    = false;
+let wpNavTarget    = null;
+
+function compassWxIcon(id) {
+  if (!id) return '🌤';
+  if (id >= 200 && id < 300) return '⛈';
+  if (id >= 300 && id < 400) return '🌦';
+  if (id >= 500 && id < 600) return '🌧';
+  if (id >= 600 && id < 700) return '❄️';
+  if (id >= 700 && id < 800) return '🌫';
+  if (id === 800) return '☀️';
+  if (id <= 802) return '⛅';
+  return '☁️';
+}
+
+function onDeviceOrientation(e) {
+  let heading = e.webkitCompassHeading !== undefined
+    ? e.webkitCompassHeading
+    : (e.absolute && e.alpha !== null ? (360 - e.alpha) % 360 : null);
+  if (heading === null) return;
+  compassHeading = heading;
+  // BLE mode compass
+  const needle = document.getElementById('compass-needle');
+  const deg    = document.getElementById('compass-deg');
+  if (needle) needle.setAttribute('transform', `rotate(${heading.toFixed(0)} 32 32)`);
+  if (deg)    deg.textContent = heading.toFixed(0) + '° ' + toCardinal(heading);
+  // WiFi mode strip compass
+  const wifiNeedle = document.getElementById('wifi-compass-needle');
+  const wifiDeg    = document.getElementById('wifi-compass-deg');
+  if (wifiNeedle) wifiNeedle.setAttribute('transform', `rotate(${heading.toFixed(0)} 19 19)`);
+  if (wifiDeg)    wifiDeg.textContent = heading.toFixed(0) + '° ' + toCardinal(heading);
+  if (wpNavActive && wpNavTarget && lastData && lastData.lat) {
+    const bear    = radarBearing(lastData.lat, lastData.lon, wpNavTarget.lat, wpNavTarget.lon);
+    const relBear = (bear - heading + 360) % 360;
+    const arrow   = document.getElementById('wpnav-arrow');
+    if (arrow) arrow.setAttribute('transform', `rotate(${relBear.toFixed(0)} 24 24)`);
+  }
+}
+
+function compassStart() {
+  if (typeof DeviceOrientationEvent === 'undefined') { log('No compass available', 'warn'); return; }
+  const listen = () => {
+    compassActive = true;
+    window.addEventListener('deviceorientationabsolute', onDeviceOrientation, true);
+    window.addEventListener('deviceorientation', onDeviceOrientation, true);
+    const overlay = document.getElementById('compass-overlay');
+    if (overlay) overlay.style.display = 'flex';
+  };
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(s => { if (s === 'granted') listen(); else log('Compass permission denied', 'warn'); })
+      .catch(() => log('Compass unavailable', 'warn'));
+  } else { listen(); }
+}
+
+function compassToggle() {
+  if (compassActive) {
+    compassActive = false;
+    window.removeEventListener('deviceorientationabsolute', onDeviceOrientation, true);
+    window.removeEventListener('deviceorientation', onDeviceOrientation, true);
+    const overlay = document.getElementById('compass-overlay');
+    if (overlay) overlay.style.display = 'none';
+  } else { compassStart(); }
+}
+
+// ── Waypoint navigation overlay ───────────────────────────────────────────────
+function wpNavStart(wp) {
+  wpNavActive = true;
+  wpNavTarget = wp;
+  const overlay = document.getElementById('wpnav-overlay');
+  const nameEl  = document.getElementById('wpnav-name');
+  if (overlay) overlay.style.display = 'block';
+  if (nameEl)  nameEl.textContent = wp.name || 'Waypoint';
+  wpNavUpdate();
+  if (!compassActive) compassStart();
+}
+
+function wpNavStop() {
+  wpNavActive = false;
+  wpNavTarget = null;
+  const overlay = document.getElementById('wpnav-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function wpNavUpdate() {
+  if (!wpNavActive || !wpNavTarget || !lastData || !lastData.lat) return;
+  const dist   = radarDistance(lastData.lat, lastData.lon, wpNavTarget.lat, wpNavTarget.lon);
+  const bear   = radarBearing(lastData.lat, lastData.lon, wpNavTarget.lat, wpNavTarget.lon);
+  const distEl = document.getElementById('wpnav-dist');
+  const bearEl = document.getElementById('wpnav-bearing');
+  if (distEl) distEl.textContent = radarMetresLabel(Math.round(dist));
+  if (bearEl) bearEl.textContent = bear.toFixed(0) + '° ' + toCardinal(bear);
+  const relBear = compassActive ? (bear - compassHeading + 360) % 360 : bear;
+  const arrow   = document.getElementById('wpnav-arrow');
+  if (arrow) arrow.setAttribute('transform', `rotate(${relBear.toFixed(0)} 26 26)`);
+}
+
+// ── Weather card ──────────────────────────────────────────────────────────────
+function wxUpdateCard(wx) {
+  if (!wx) return;
+  const useFt  = deviceSettings && deviceSettings.spd === 1;
+  const temp   = useFt ? (wx.t * 9/5 + 32).toFixed(0) + '°F' : wx.t.toFixed(0) + '°C';
+  const feels  = useFt ? (wx.f * 9/5 + 32).toFixed(0) + '°F' : wx.f.toFixed(0) + '°C';
+  const wind   = useFt ? (wx.w * 0.621371).toFixed(0) + 'mph' : wx.w.toFixed(0) + 'km/h';
+  const minT   = useFt ? (wx.mn * 9/5 + 32).toFixed(0) : wx.mn.toFixed(0);
+  const maxT   = useFt ? (wx.mx * 9/5 + 32).toFixed(0) : wx.mx.toFixed(0);
+  const unit   = useFt ? '°F' : '°C';
+  const el = id => document.getElementById(id);
+  if (el('wx-icon'))   el('wx-icon').textContent   = compassWxIcon(wx.id);
+  if (el('wx-temp'))   el('wx-temp').textContent   = temp;
+  if (el('wx-feels'))  el('wx-feels').textContent  = 'feels ' + feels;
+  if (el('wx-desc'))   el('wx-desc').textContent   = wx.d || '';
+  if (el('wx-wind'))   el('wx-wind').textContent   = (wx.wd || '') + ' ' + wind;
+  if (el('wx-hum'))    el('wx-hum').textContent    = wx.h + '% hum';
+  if (el('wx-minmax')) el('wx-minmax').textContent = minT + unit + ' / ' + maxT + unit;
+  const card = document.getElementById('wx-overlay');
+  if (card) card.style.display = 'block';
+}
+const isWifiMode = window.location.hostname === '192.168.4.1'
+                || window.location.hostname === 'azimuth.local';
+let wifiPollInterval = null;
+let wifiMsgSeenTs = 0;
+
+async function wifiPoll() {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2000);
+    const resp = await fetch('/api/state', { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!resp.ok) return;
+    const ct = resp.headers.get('content-type') || '';
+    if (!ct.includes('json')) return;
+    const d = await resp.json();
+    if (!window._wifiFirstPoll) {
+      window._wifiFirstPoll = true;
+      try { log('WiFi data: ' + d.name + ' fix=' + d.fix + ' lat=' + (d.lat ? d.lat.toFixed(4) : '—'), 'ok'); } catch(e) {}
+      if (d.name) setDeviceName(d.name);
+      // Apply settings from device
+      if (d.settings) {
+        deviceSettings = {
+          spd: d.settings.spd, elv: d.settings.elv,
+          tmo: d.settings.tmo, brt: d.settings.brt
+        };
+        applySettingsToUI(d.settings);
+        // Populate LoRa settings
+        loraRegionIdx   = d.settings.loraRegion   || 0;
+        loraIntervalSec = d.settings.loraInterval  || 30;
+        ['lora-region-select','lora-region-settings'].forEach(id => {
+          const el = document.getElementById(id); if (el) el.value = loraRegionIdx;
+        });
+        ['lora-interval-input','lora-interval-settings'].forEach(id => {
+          const el = document.getElementById(id); if (el) el.value = loraIntervalSec;
+        });
+      }
+      // Restore waypoints
+      if (d.wps && d.wps.length) {
+        wpList = d.wps;
+        wpSent = d.wps;
+        wpQueued = [];
+        if (!isWifiMode) wpRenderMarkers();
+        wpRenderPanelList();
+      }
+    }
+    try {
+      processDeviceState(d);
+      if (!window._wifiDataLogged) { window._wifiDataLogged = true; log('processDeviceState OK', 'ok'); }
+    } catch(e) {
+      log('processDeviceState error: ' + e.message + ' line ' + e.lineNumber, 'err');
+    }
+  } catch(e) {
+    // iOS Safari throws "The string did not match the expected pattern" instead of AbortError
+    if (e.name !== 'AbortError' && !e.message.includes('pattern') && !e.message.includes('abort') && !e.message.includes('cancel')) {
+      log('WiFi poll error: ' + e.message, 'err');
+    }
+  }
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2000);
+    const resp = await fetch('/api/messages', { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!resp.ok) return;
+    const mct = resp.headers.get('content-type') || '';
+    if (!mct.includes('json')) return;
+    const msgs = await resp.json();
+    msgs.forEach(m => {
+      if (m.ts > wifiMsgSeenTs) {
+        wifiMsgSeenTs = m.ts;
+        receiveLoraMessage({ from: m.from, name: m.name, text: m.text });
+      }
+    });
+  } catch(e) {}
+}
+
+async function wifiSendCmd(cmd) {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3000);
+    await fetch('/api/cmd', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: cmd,
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+  } catch(e) { log('Command failed: ' + e.message, 'err'); }
+}
+
+function processDeviceState(d) {
+  lastData = {
+    lat: d.lat, lon: d.lon, alt: d.alt, spd: d.spd, hdg: d.hdg,
+    sat: d.sats, fix: d.fix === 1 || d.fix === true,
+    bat: d.usb ? 255 : d.bat, ts: new Date()
+  };
+  const overlay = document.getElementById('stats-overlay');
+  if (overlay) overlay.classList.remove('disconnected');
+  try { updateUI(lastData); } catch(e) { log('updateUI err: ' + e.message + ' @ ' + (e.stack||'').split('\n')[1], 'err'); }
+  try { updateAllDistanceLines(); } catch(e) {}
+  // Update weather card (BLE mode)
+  if (d.wx && !isWifiMode) try { wxUpdateCard(d.wx); } catch(e) {}
+  // Update waypoint nav if active
+  if (wpNavActive) try { wpNavUpdate(); } catch(e) {}
+  // WiFi mode — update strip, stat bar, coord bar
+  if (isWifiMode) try { wifiUpdateStrip(d); } catch(e) { log('strip err: ' + e.message, 'err'); }
+  // Peers
+  if (d.peers && d.peers.length) {
+    d.peers.forEach(p => {
+      try {
+        processPeerData({ peer: p.id, name: p.name, lat: p.lat, lon: p.lon,
+          alt: p.alt, hdg: p.hdg, spd: p.spd, bat: p.bat,
+          status: p.status, ts: p.ts });
+      } catch(e) {}
+    });
+    // Update peers flyout if open
+    if (wifiPeersOpen) try { wifiRenderPeers(); } catch(e) {}
+  }
+  // AP state — update hotspot panel if included in state
+  if (d.ap !== undefined) {
+    try { apUpdateUI(d.ap === 1 || d.ap === true, d.ssid, d.ip, d.pass); } catch(e) {}
+  }
+  // Recording badge
+  try {
+    const badge = document.getElementById('rec-badge');
+    if (badge) badge.style.display = d.rec ? 'inline-flex' : 'none';
+    const recOverlay = document.getElementById('rec-overlay');
+    if (recOverlay) recOverlay.style.display = d.rec ? 'flex' : 'none';
+  } catch(e) {}
+}
+
+function wifiModeStart() {
+  document.body.classList.add('wifi-mode');
+  appAuthorised = true;
+
+  // Force all panels to fullscreen in WiFi mode via direct style injection
+  // This bypasses any CSS specificity issues
+  const panelStyle = document.createElement('style');
+  panelStyle.id = 'wifi-panel-override';
+  panelStyle.textContent = `
+    /* All panels fullscreen */
+    body { --surface: #161b22; --surface2: #21262d; --border: #21262d;
+      --border2: #30363d; --text: #c9d1d9; --muted: #8b949e; --hint: #6e7681; }
+    .az-panel { position: fixed !important; top: 0 !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
+      width: 100% !important; max-width: 100% !important; border: none !important;
+      background: #0d1117 !important; z-index: 9500 !important; }
+    #az-overlay { top: 0 !important; }
+    /* Main menu — fullscreen overlay */
+    #panel-main { display: none; position: fixed !important; top: 0 !important; left: 0 !important;
+      right: 0 !important; bottom: 0 !important; z-index: 9500 !important;
+      flex-direction: column; justify-content: center; align-items: flex-start; padding: 60px 36px 36px;
+      background: #0d1117 !important; }
+    #panel-main.open { display: flex !important; }
+    #panel-main .az-panel-hdr { display: none !important; }
+    #panel-main .az-panel-body { display: flex; flex-direction: column; justify-content: center;
+      flex: 1; overflow: visible; background: transparent !important; padding: 0 !important; width: 100%; }
+    /* All menu items — including theme footer */
+    #panel-main .az-menu-item, #wifi-theme-footer {
+      border: none !important; border-bottom: 1px solid rgba(255,255,255,.1) !important;
+      padding: 12px 0 !important; background: transparent !important;
+      gap: 16px !important; display: flex !important; align-items: center !important; }
+    #panel-main .az-menu-item:first-child { border-top: 1px solid rgba(255,255,255,.1) !important; }
+    #panel-main .az-menu-icon { width: 36px !important; height: 36px !important; border-radius: 9px !important;
+      background: rgba(255,255,255,.07) !important; }
+    #panel-main .az-menu-name { font-size: 22px !important; font-weight: 700 !important;
+      color: #e6edf3 !important; letter-spacing: -.01em !important; line-height: 1.1 !important; }
+    #panel-main .az-menu-desc { font-size: 11px !important; color: #8b949e !important; }
+    #panel-main .az-menu-arrow { display: none !important; }
+    #panel-main .az-section-label { display: none !important; }
+    #panel-main .az-menu-info { display: flex !important; flex-direction: column !important; justify-content: center !important; flex: 1 !important; }
+    /* Theme item */
+    #wifi-theme-footer { margin-top: 0 !important; }
+    #wifi-theme-footer .az-menu-name { font-size: 22px !important; font-weight: 700 !important; color: #e6edf3 !important; letter-spacing: -.01em !important; }
+    #wifi-theme-footer .az-menu-desc { font-size: 11px !important; color: #8b949e !important; }
+    #wifi-theme-footer .az-menu-icon { width: 36px !important; height: 36px !important; border-radius: 9px !important; background: rgba(255,255,255,.07) !important; }
+    /* X close button */
+    #panel-main-close { display: none; position: fixed !important; top: 16px !important; right: 16px !important;
+      width: 40px !important; height: 40px !important; border-radius: 50% !important;
+      background: rgba(255,255,255,.14) !important; border: none !important;
+      color: #e6edf3 !important; font-size: 24px !important; cursor: pointer !important;
+      align-items: center !important; justify-content: center !important; z-index: 9999 !important; }
+    #panel-main.open #panel-main-close { display: flex !important; }
+    /* Dark sub-panels */
+    .az-panel-hdr { background: #161b22 !important; border-bottom: 1px solid #21262d !important; }
+    .az-panel-title { color: #e6edf3 !important; font-size: 15px !important; font-weight: 700 !important; }
+    .az-back-btn { background: #21262d !important; border: 1px solid #30363d !important;
+      color: #c9d1d9 !important; width: 34px !important; height: 34px !important;
+      border-radius: 8px !important; font-size: 18px !important; display: flex !important;
+      align-items: center !important; justify-content: center !important; }
+    .az-menu-item { border-bottom: 1px solid #21262d !important; }
+    .az-menu-name { color: #e6edf3 !important; font-size: 13px !important; }
+    .az-menu-desc { color: #8b949e !important; }
+    .az-panel-body { background: #161b22 !important; }
+    .az-menu-icon { background: #21262d !important; }
+    .az-panel input, .az-panel select { background: #21262d !important; border-color: #30363d !important; color: #e6edf3 !important; }
+    /* Hotspot panel — explicit text colours */
+    #ap-card-on { color: #c9d1d9; }
+    #ap-card-off { color: #6e7681; }
+    #panel-hotspot .az-panel-body > div > div { color: #c9d1d9 !important; }
+    /* MSG and Peers flyouts */
+    #wifi-msg-flyout, #wifi-peers-flyout { background: #161b22 !important; }
+    #wifi-msg-flyout *, #wifi-peers-flyout * { color: #e6edf3 !important; }
+    #wifi-msg-flyout [style*="color:#8b949e"], #wifi-peers-flyout [style*="color:#8b949e"] { color: #8b949e !important; }
+  `;
+  // Light theme override — swapped in by wifiThemeToggle via updateWifiPanelTheme()
+  window._wifiPanelDark = panelStyle;
+  window._wifiDarkCSS = panelStyle.textContent;
+  document.head.appendChild(panelStyle);
+  console.log('[Azimuth] wifiModeStart: style injected, body classes:', document.body.className);
+  const btn = document.getElementById('connect-btn');
+  if (btn) btn.style.display = 'none';
+  const hint = document.getElementById('connect-hint');
+  if (hint) hint.style.display = 'none';
+  // Show menu button — move it to LEFT of header for WiFi mode
+  const menuBtn = document.getElementById('menu-btn');
+  const hdr = menuBtn && menuBtn.closest('.app-header, header, #app-header') || menuBtn && menuBtn.parentElement;
+  if (menuBtn) {
+    menuBtn.style.display = 'flex';
+    menuBtn.style.borderColor = '#444c56';
+    menuBtn.style.color = '#c9d1d9';
+    // Move to front of header
+    if (hdr) hdr.insertBefore(menuBtn, hdr.firstChild);
+  }
+  // Dark header in WiFi mode
+  const appHdr = document.querySelector('.app-header') || document.querySelector('header');
+  if (appHdr) {
+    appHdr.style.background = '#0d1117';
+    appHdr.style.borderBottom = '1px solid #21262d';
+    appHdr.style.color = '#e6edf3';
+  }
+  // Logo: left-align device name under Azimuth, style for dark
+  const logoText   = document.querySelector('.logo-text');
+  const logoDiv    = document.querySelector('.logo');
+  const devName    = document.getElementById('connected-device-name');
+  if (logoDiv) {
+    if (logoText) logoText.style.color = '#58a6ff';
+    logoDiv.style.display = 'flex';
+    logoDiv.style.flexDirection = 'column';
+    logoDiv.style.alignItems = 'flex-start';
+    logoDiv.style.gap = '1px';
+    if (devName) {
+      devName.style.display = 'block';
+      devName.style.fontSize = '9px';
+      devName.style.color = '#3fb950';
+      devName.style.fontWeight = '600';
+      devName.style.maxWidth = 'none';
+    }
+  }
+  // Stats overlay hidden in WiFi mode
+  const statsOv = document.getElementById('stats-overlay');
+  if (statsOv) statsOv.style.display = 'none';
+  // Show fix badge
+  const fixBadge = document.getElementById('fix-badge');
+  if (fixBadge) fixBadge.style.display = 'flex';
+  // Wire theme button to WiFi toggle
+  const themeBtnWifi = document.getElementById('theme-btn');
+  if (themeBtnWifi) {
+    themeBtnWifi.setAttribute('onclick', 'wifiThemeToggle()');
+    themeBtnWifi.title = 'Toggle light/dark';
+    themeBtnWifi.style.borderColor = '#30363d';
+    themeBtnWifi.style.color = '#8b949e';
+  }
+  // Collapse activity log by default in WiFi mode
+  const logPanel = document.getElementById('log-panel');
+  const logArrow = document.getElementById('log-toggle-arrow');
+  if (logPanel) { logPanel.classList.remove('expanded'); }
+  if (logArrow) logArrow.style.transform = 'rotate(-90deg)';
+  // Show theme toggle footer in panel-main
+  const themeFooter = document.getElementById('wifi-theme-footer');
+  if (themeFooter) themeFooter.style.display = 'block';
+
+  // ── WiFi menu customisation ───────────────────────────────────────────────
+  // Hide section labels (WiFi menu is flat)
+  ['menu-section-nav','menu-section-rec','menu-section-dev'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+  // Hide Peers from menu (accessed via strip button)
+  const menuPeers = document.getElementById('menu-item-peers');
+  if (menuPeers) { menuPeers.style.cssText = 'display:none!important'; }
+  const peersBadge = document.getElementById('menu-peers-badge');
+  if (peersBadge) { peersBadge.style.cssText = 'display:none!important'; }
+
+  // Rename items to WiFi-appropriate labels
+  const renames = {
+    'menu-wayf-name':    'Waypoints',
+    'menu-wayf-desc':    'View saved waypoints',
+    'menu-track-name':   'Track',
+    'menu-routes-name':  'Routes',
+    'menu-network-name': 'Network',
+    'menu-network-desc': 'LoRa settings',
+    'menu-device-name':  'Device',
+    'menu-device-desc':  'Settings · info',
+  };
+  Object.entries(renames).forEach(([id, text]) => {
+    const el = document.getElementById(id); if (el) el.textContent = text;
+  });
+
+  // Replace Wayfinding icon with Waypoints (hexagon + pin) icon
+  const wayfIcon = document.querySelector('#panel-main [onclick="openPanel(\'panel-wayf\')"] .az-menu-icon');
+  if (wayfIcon) {
+    wayfIcon.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M9 1L16 5v8L9 17 2 13V5z" stroke="#4A7C59" stroke-width="1.4" fill="none"/>
+      <circle cx="9" cy="9" r="2" fill="#4A7C59" opacity=".7"/>
+    </svg>`;
+  }
+  // Replace Track icon with simpler circle-record
+  const trackIcon = document.querySelector('#panel-main [onclick="openPanel(\'panel-track\')"] .az-menu-icon');
+  if (trackIcon) {
+    trackIcon.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <circle cx="9" cy="9" r="6" stroke="#8b949e" stroke-width="1.4"/>
+      <circle cx="9" cy="9" r="2.5" fill="#8b949e" opacity=".7"/>
+    </svg>`;
+    trackIcon.style.background = '#21262d';
+  }
+  // Replace Network icon with LoRa-style waves
+  const netIcon = document.querySelector('#panel-main [onclick="openPanel(\'panel-lora\')"] .az-menu-icon');
+  if (netIcon) {
+    netIcon.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M3 9a8.5 8.5 0 0 1 12 0" stroke="#8b949e" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M5.5 11.5a5 5 0 0 1 7 0" stroke="#8b949e" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M8 14a1.5 1.5 0 0 1 2 0" stroke="#8b949e" stroke-width="1.4" stroke-linecap="round"/>
+      <circle cx="9" cy="15.5" r="1" fill="#8b949e"/>
+    </svg>`;
+    netIcon.style.background = '#21262d';
+  }
+  // Replace Device icon with person silhouette
+  const devIcon = document.querySelector('#panel-main [onclick="openPanel(\'panel-device\')"] .az-menu-icon');
+  if (devIcon) {
+    devIcon.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <circle cx="9" cy="6" r="3" stroke="#8b949e" stroke-width="1.4"/>
+      <path d="M3 16c0-3.3 2.7-5 6-5s6 1.7 6 5" stroke="#8b949e" stroke-width="1.4" stroke-linecap="round"/>
+    </svg>`;
+    devIcon.style.background = '#21262d';
+  }
+  // Routes icon — document lines
+  const routesIcon = document.querySelector('#panel-main [onclick="openPanel(\'panel-routes\')"] .az-menu-icon');
+  if (routesIcon) {
+    routesIcon.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M1 5h4M1 9h8M1 13h5" stroke="#8b949e" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M11 7l3 3-3 3M14 10H7" stroke="#8b949e" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+    routesIcon.style.background = '#21262d';
+  }
+
+  // Hotspot is always active in WiFi mode (you can only be here if AP is running)
+  const hostname = window.location.hostname;
+  // Device name comes from first /api/state poll; fall back to hostname-based name
+  const devNameEl = document.getElementById('connected-device-name');
+  const devNameStr = (devNameEl && devNameEl.textContent.trim()) || '';
+  const ssidStr = devNameStr || ('Azimuth-' + hostname.replace('azimuth.local','Device').replace('192.168.4.1','Device'));
+  apUpdateUI(true, ssidStr, hostname, 'azimuth1');
+
+  // ── IxDF hamburger UX improvements ───────────────────────────────────────
+  // 1. Add "MENU" label below hamburger icon (makes purpose obvious)
+  const menuBtnWifi = document.getElementById('menu-btn');
+  if (menuBtnWifi && !menuBtnWifi.dataset.labeled) {
+    menuBtnWifi.dataset.labeled = '1';
+    menuBtnWifi.style.flexDirection = 'column';
+    menuBtnWifi.style.gap = '2px';
+    menuBtnWifi.style.height = '44px';
+    menuBtnWifi.style.width = '44px';
+    const lbl = document.createElement('span');
+    lbl.textContent = 'MENU';
+    lbl.style.cssText = 'font-size:7px;font-weight:700;letter-spacing:.06em;color:#8b949e;line-height:1;';
+    menuBtnWifi.appendChild(lbl);
+  }
+  // 2. Animate hamburger → X when open (visual feedback per IxDF best practice)
+  const origToggle = window.toggleDrawer;
+  window.toggleDrawer = function() {
+    origToggle && origToggle();
+    const btn = document.getElementById('menu-btn');
+    if (!btn) return;
+    const isOpen = document.getElementById('panel-main') && document.getElementById('panel-main').classList.contains('open');
+    const lines = btn.querySelectorAll('.menu-hamburger-line');
+    if (lines.length === 3) {
+      if (isOpen) {
+        lines[0].style.transform = 'translateY(5px) rotate(45deg)';
+        lines[1].style.opacity = '0';
+        lines[2].style.transform = 'translateY(-5px) rotate(-45deg)';
+      } else {
+        lines[0].style.transform = '';
+        lines[1].style.opacity = '1';
+        lines[2].style.transform = '';
+      }
+    }
+  };
+  // Add transition to hamburger lines
+  const menuLines = document.querySelectorAll('#menu-btn svg line, #menu-btn .menu-hamburger-line');
+  menuLines.forEach(l => l.style.transition = 'transform .2s, opacity .2s');
+
+  log('WiFi mode — connected to device at ' + window.location.hostname, 'ok');
+  wifiPoll();
+  wifiPollInterval = setInterval(wifiPoll, 1000);
+}
+
+// ── Unified command sender — BLE or WiFi ─────────────────────────────────────
+async function sendCmd(cmd) {
+  if (isWifiMode) {
+    await wifiSendCmd(cmd);
+  } else if (setChar) {
+    await setChar.writeValueWithResponse(new TextEncoder().encode(cmd));
+  } else {
+    throw new Error('Not connected');
+  }
+}
 let exportedRoute = [];
 let trackPoints = [];
 let lastData    = null;
@@ -1604,7 +3373,108 @@ let loraRegionIdx   = 0;
 let loraIntervalSec = 30;
 let peerPanelOpen = false;
 
-// ── Weather push system ───────────────────────────────────────────────────────
+// ── AP mode ───────────────────────────────────────────────────────────────────
+let apActive = false;
+
+async function apToggle() {
+  if (!isWifiMode && !setChar) { log('Not connected', 'warn'); return; }
+  const turningOn = !apActive;
+  const cmd = apActive ? 'APMODE:0' : 'APMODE:1';
+  // Optimistically update button to show progress
+  const btn = document.getElementById('ap-toggle-btn');
+  if (btn) { btn.textContent = turningOn ? 'Starting…' : 'Stopping…'; btn.disabled = true; }
+  try {
+    await sendCmd(cmd);
+    // BLE: response comes via onSettingsNotify; WiFi: re-poll after delay
+    if (isWifiMode) {
+      setTimeout(() => {
+        if (btn) { btn.disabled = false; }
+        // In WiFi mode stopping AP kills connection — just update UI
+        apUpdateUI(!apActive, null, null, null);
+      }, 1500);
+    } else {
+      // BLE: response will arrive via onSettingsNotify, just re-enable btn after timeout
+      setTimeout(() => { if (btn) btn.disabled = false; }, 3000);
+    }
+  } catch(e) {
+    log('AP toggle failed: ' + e.message, 'err');
+    if (btn) { btn.disabled = false; btn.textContent = apActive ? 'Stop hotspot' : 'Start hotspot'; }
+  }
+}
+
+function apUpdateUI(active, ssid, ip, pass) {
+  apActive = active;
+  const bleWarning = document.getElementById('ap-ble-warning');
+  // BLE warning: show only when hotspot is off and in BLE mode
+  if (bleWarning) bleWarning.style.display = (!active && !isWifiMode) ? 'block' : 'none';
+  const btn      = document.getElementById('ap-toggle-btn');
+  const cardOff  = document.getElementById('ap-card-off');
+  const cardOn   = document.getElementById('ap-card-on');
+  const warning  = document.getElementById('ap-wifi-warning');
+  const badge    = document.getElementById('menu-hotspot-badge');
+  const desc     = document.getElementById('menu-hotspot-desc');
+  const icon     = document.getElementById('menu-hotspot-icon');
+
+  if (btn) {
+    btn.textContent = active ? 'Stop hotspot' : 'Start hotspot';
+    btn.style.background   = active ? 'var(--danger-bg)'  : 'var(--accent-bg)';
+    btn.style.borderColor  = active ? 'var(--danger)'     : 'var(--accent)';
+    btn.style.color        = active ? 'var(--danger)'     : 'var(--accent)';
+  }
+  if (cardOff)  cardOff.style.display  = active ? 'none'  : 'block';
+  if (cardOn)   cardOn.style.display   = active ? 'block' : 'none';
+  if (warning)  warning.style.display  = (active && isWifiMode) ? 'block' : 'none';
+
+  // Badge — solid green, white text, both themes
+  if (badge) {
+    badge.style.display    = active ? '' : 'none';
+    badge.textContent      = 'Active';
+    badge.style.background = active ? '#238636' : '';
+    badge.style.color      = active ? '#ffffff' : '';
+    badge.style.border     = active ? '1px solid #1a7f37' : '';
+    badge.style.borderRadius = '5px';
+    badge.style.padding    = active ? '2px 7px' : '';
+    badge.style.fontSize   = '10px';
+    badge.style.fontWeight = '700';
+  }
+  if (desc) desc.textContent = active ? (ssid || 'Active') : 'Start WiFi access point';
+  // Icon — solid green background, white symbol when active
+  if (icon) {
+    icon.style.background = active ? '#238636' : (isWifiMode ? '' : '#E6F1FB');
+    // Inject targeted CSS rule to beat the general !important override
+    let hotspotIconStyle = document.getElementById('wifi-hotspot-icon-style');
+    if (!hotspotIconStyle) {
+      hotspotIconStyle = document.createElement('style');
+      hotspotIconStyle.id = 'wifi-hotspot-icon-style';
+      document.head.appendChild(hotspotIconStyle);
+    }
+    hotspotIconStyle.textContent = active
+      ? '#menu-hotspot-icon { background: #238636 !important; } #menu-hotspot-icon svg path { stroke: #ffffff !important; } #menu-hotspot-icon svg circle { stroke: #ffffff !important; fill: #ffffff !important; }'
+      : '#menu-hotspot-icon { background: rgba(255,255,255,.07) !important; }';
+    console.log('[Azimuth] apUpdateUI icon active=' + active + ' style=' + hotspotIconStyle.textContent.substring(0,50));
+    // Diagnostic: check computed stroke on first path
+    if (active) {
+      setTimeout(() => {
+        const path = icon.querySelector('path');
+        if (path) console.log('[Azimuth] hotspot path computed stroke:', getComputedStyle(path).stroke, 'fill:', getComputedStyle(path).fill);
+      }, 100);
+    }
+  }
+
+  if (active && ssid) {
+    const ssidEl  = document.getElementById('ap-ssid');
+    const passEl  = document.getElementById('ap-pass');
+    const urlEl   = document.getElementById('ap-url');
+    const ipEl    = document.getElementById('ap-ip');
+    const ipRow   = document.getElementById('ap-ip-row');
+    if (ssidEl) ssidEl.textContent = ssid;
+    if (passEl) passEl.textContent = pass || 'azimuth1';
+    if (urlEl)  urlEl.textContent  = 'azimuth.local';
+    if (ipEl)   ipEl.textContent   = ip || '192.168.4.1';
+    if (ipRow)  ipRow.style.display = ip ? 'block' : 'none';
+  }
+  log(active ? `Hotspot started — connect to "${ssid}" · azimuth.local` : 'Hotspot stopped', active ? 'ok' : 'warn');
+}
 const WX_REFRESH_MS  = 10 * 60 * 1000; // 10 minutes between refreshes per device
 const WX_API_BASE    = 'https://api.openweathermap.org/data/2.5/weather';
 let wxLastFetch = {};    // { deviceId: timestamp } — throttle per device
@@ -1747,6 +3617,7 @@ function wpRenderList() {
 }
 
 function wpRenderMarkers() {
+  if (isWifiMode) return; // no map in WiFi mode
   wpMarkers.forEach(m => map.removeLayer(m));
   wpMarkers = [];
   wpList.forEach((wp, i) => {
@@ -1794,13 +3665,13 @@ function wpRemove(i) {
 }
 
 async function wpSendToGroup() {
-  if (!setChar) { log('Not connected', 'warn'); return; }
+  if (!isWifiMode && !setChar) { log('Not connected', 'warn'); return; }
   const toSend = [...wpSent, ...wpQueued];
   if (toSend.length === 0) { log('No waypoints to send', 'warn'); return; }
   wpAcks = {};
   const payload = 'SETWP:' + JSON.stringify({ wps: toSend });
   try {
-    await setChar.writeValueWithResponse(new TextEncoder().encode(payload));
+    await sendCmd(payload);
     // Move queued to sent
     wpSent = [...toSend];
     wpQueued = [];
@@ -1828,8 +3699,8 @@ async function wpClearAll() {
   wpRenderPanelList();
   const ackRow = document.getElementById('wayf-ack-row');
   if (ackRow) ackRow.style.display = 'none';
-  if (setChar) {
-    try { await setChar.writeValueWithResponse(new TextEncoder().encode('CLEARWP')); } catch(e) {}
+  if (isWifiMode || setChar) {
+    try { await sendCmd('CLEARWP'); } catch(e) {}
   }
   log('Waypoints cleared', 'ok');
 }
@@ -1843,6 +3714,67 @@ L.control.zoom({ position: 'bottomleft' }).addTo(map);
 let autoFollow   = true;   // true = map follows device position
 let firstFix     = true;   // true = first position received, always centre
 let userInteracting = false;
+
+// ── Phone GPS fallback ────────────────────────────────────────────────────────
+let phoneGpsWatcher  = null;
+let phoneGpsMarker   = null;
+let phoneGpsActive   = false;  // true while showing phone position on map
+
+function phoneGpsStart() {
+  if (!navigator.geolocation) return;
+  if (isWifiMode) return;  // device has its own GPS in WiFi mode
+  if (phoneGpsWatcher) return;
+  phoneGpsWatcher = navigator.geolocation.watchPosition(
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const acc = pos.coords.accuracy;
+      // Only show phone position if device has no fix yet
+      if (firstFix) {
+        phoneGpsActive = true;
+        if (!phoneGpsMarker) {
+          const icon = L.divIcon({
+            className: '',
+            html: `<div style="width:14px;height:14px;background:#185FA5;border:2.5px solid #fff;border-radius:50%;box-shadow:0 1px 5px rgba(0,0,0,.3);opacity:0.8;"></div>`,
+            iconSize: [14, 14], iconAnchor: [7, 7]
+          });
+          phoneGpsMarker = L.marker([lat, lon], { icon }).addTo(map);
+          phoneGpsMarker.bindTooltip('Phone GPS', { permanent: false });
+        } else {
+          phoneGpsMarker.setLatLng([lat, lon]);
+        }
+        if (autoFollow) {
+          map._zooming_programmatic = true;
+          map.setView([lat, lon], map.getZoom() < 14 ? 14 : map.getZoom(), { animate: true });
+          setTimeout(() => { map._zooming_programmatic = false; }, 500);
+        }
+        // Update stats overlay to show phone position
+        const ageRow = document.getElementById('stat-age-row');
+        if (ageRow) ageRow.textContent = `Phone GPS · ±${Math.round(acc)}m`;
+      } else if (phoneGpsMarker) {
+        // Device has fix — remove phone marker
+        map.removeLayer(phoneGpsMarker);
+        phoneGpsMarker = null;
+        phoneGpsActive = false;
+      }
+    },
+    (err) => { log('Phone GPS: ' + err.message, 'warn'); },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+  );
+  log('Phone GPS active — shown until device gets fix', 'ok');
+}
+
+function phoneGpsStop() {
+  if (phoneGpsWatcher) {
+    navigator.geolocation.clearWatch(phoneGpsWatcher);
+    phoneGpsWatcher = null;
+  }
+  if (phoneGpsMarker) {
+    map.removeLayer(phoneGpsMarker);
+    phoneGpsMarker = null;
+  }
+  phoneGpsActive = false;
+}
 
 // Detect user map interaction — disable auto-follow
 map.on('dragstart', () => { userInteracting = true; setAutoFollow(false); });
@@ -2161,6 +4093,8 @@ function onDisconnected() {
   peerChar = null;
   loraPeers = {};       // reset peers each session
   wxStopInterval();     // stop weather push interval
+  loraMessages.length = 0;  // clear message log
+  renderMsgLog();
   updatePeerPanel();
   clearTimeout(staleTimer);  // stop stale watchdog
   updateMarkerLabel(null);   // clear device name from marker
@@ -2392,6 +4326,12 @@ function onSettingsNotify(event) {
       return;
     }
 
+    // AP mode response
+    if (data.ap !== undefined) {
+      apUpdateUI(data.ap === 1, data.ssid, data.ip, data.pass);
+      return;
+    }
+
     // OWM key returned from device on connect
     if (data.owmKey !== undefined) {
       if (data.owmKey) {
@@ -2436,6 +4376,8 @@ function onSettingsNotify(event) {
             await setChar.writeValueWithResponse(new TextEncoder().encode("GETWP")).catch(()=>{});
             // Read OWM key so web app can push weather without user re-entering it
             await setChar.writeValueWithResponse(new TextEncoder().encode("GETOWM")).catch(()=>{});
+            // Read AP state so hotspot panel shows correct status on connect
+            await setChar.writeValueWithResponse(new TextEncoder().encode("GETAP")).catch(()=>{});
           } catch(e) {}
           // Start weather push interval
           wxStartInterval();
@@ -2616,18 +4558,21 @@ async function verifyPin() {
 }
 
 async function renameDevice() {
-  if (!setChar) { log('Not connected', 'warn'); return; }
+  if (!isWifiMode && !setChar) { log('Not connected', 'warn'); return; }
   let name = document.getElementById('device-name').value.trim();
   if (!name) { log('Please enter a device name', 'warn'); return; }
-  // Strip Azimuth- prefix if user typed it — firmware will add it
   if (name.toLowerCase().startsWith('azimuth-')) name = name.substring(8);
   if (name.length === 0) { log('Please enter a name after Azimuth-', 'warn'); return; }
   if (name.length > 21) { log('Name too long (max 21 chars)', 'warn'); return; }
-  // Set intentional disconnect immediately — device will reboot after rename
+  if (isWifiMode) {
+    await sendCmd(`SETNAME:${name}`);
+    log('Device renamed — reconnect to see new name', 'ok');
+    return;
+  }
+  // BLE path — device reboots after rename
   intentionalDisconnect = true;
   appAuthorised = false;
   closeAllPanels();
-  // Send rename — fire and forget, device reboots immediately
   await setChar.writeValueWithResponse(new TextEncoder().encode(`SETNAME:${name}`)).catch(()=>{});
   // Forget the device so auto-reconnect cannot fire
   if (bleDevice && bleDevice.gatt.connected) {
@@ -2710,22 +4655,28 @@ async function wifiRefresh() {
 }
 
 async function applySettings() {
-  if (!setChar) {
+  if (!isWifiMode && !setChar) {
     setEl('settings-status', 'text', 'Not connected to device');
     return;
   }
-  const payload = 'SET:' + JSON.stringify(deviceSettings);
-  const enc = new TextEncoder();
-  await setChar.writeValueWithResponse(enc.encode(payload));
-  log('Settings saved to device', 'ok');
-  // Show toast, then fade out
-  const toast = document.getElementById('save-toast');
-  toast.classList.remove('hide');
-  toast.classList.add('show');
-  setTimeout(() => {
-    toast.classList.replace('show', 'hide');
-    setTimeout(() => toast.classList.remove('hide'), 900);
-  }, 1700);
+  try {
+    if (isWifiMode) {
+      const s = deviceSettings;
+      await sendCmd(`SETSET:${s.spd}:${s.elv}:${s.tmo}:${s.brt}`);
+    } else {
+      const payload = 'SET:' + JSON.stringify(deviceSettings);
+      await setChar.writeValueWithResponse(new TextEncoder().encode(payload));
+    }
+    log('Settings saved to device', 'ok');
+    const toast = document.getElementById('save-toast');
+    if (toast) {
+      toast.classList.remove('hide');
+      toast.classList.add('show');
+      setTimeout(() => { toast.classList.replace('show','hide'); setTimeout(()=>toast.classList.remove('hide'),900); }, 1700);
+    }
+  } catch(e) {
+    log('Settings save failed: ' + e.message, 'err');
+  }
 }
 
 // ── Screen mirror ─────────────────────────────────────────────────────────────
@@ -2933,6 +4884,8 @@ function updateUI({ lat, lon, alt, spd, hdg, sat, fix, approx, acc, ts, bat }) {
     badge.classList.add('active');
     badge.style.background = '';
     fixTxt.textContent = `GPS fix · ${sat} sats`;
+    // Device has fix — stop showing phone GPS
+    if (phoneGpsActive) phoneGpsStop();
   } else if (approx) {
     badge.classList.add('active');
     badge.style.background = 'var(--warning, #d29922)';
@@ -2947,9 +4900,11 @@ function updateUI({ lat, lon, alt, spd, hdg, sat, fix, approx, acc, ts, bat }) {
   const overlay = document.getElementById('stats-overlay');
   if (overlay) overlay.classList.remove('disconnected');
 
+  // Map — skip entirely in WiFi mode (no Leaflet)
+  if (isWifiMode) return;
+
   // Map
   if (fix) {
-    // Remove approx circle if we now have a real fix
     if (window._approxCircle) { window._approxCircle.remove(); window._approxCircle = null; }
     if (markerApprox) { markerApprox = false; marker.setIcon(buildMarkerIcon(markerLabel, false)); }
     const latlng = [lat, lon];
@@ -3206,6 +5161,12 @@ function onPeerNotify(event) {
   try {
     const raw = new TextDecoder().decode(event.target.value).replace(/\0/g, '').trim();
     const data = JSON.parse(raw);
+    processPeerData(data);
+  } catch(e) {}
+}
+
+function processPeerData(data) {
+  try {
 
     // ── SOS alert ──────────────────────────────────────────────────────────
     if (data.sos) {
@@ -3213,8 +5174,8 @@ function onPeerNotify(event) {
       log(`🆘 SOS from ${name}`, 'err');
       // Show persistent SOS toast
       showSOSAlert(data);
-      // Place/update red SOS marker on map
-      if (data.lat && data.lon) {
+      // Place/update red SOS marker on map (BLE mode only)
+      if (!isWifiMode && data.lat && data.lon) {
         if (sosMarkers[data.peer]) map.removeLayer(sosMarkers[data.peer]);
         const icon = L.divIcon({
           className: '',
@@ -3312,35 +5273,63 @@ function onPeerNotify(event) {
 
 // Received message from LoRa peer
 const loraMessages = [];
+
+function renderMsgLog() {
+  const list = document.getElementById('msg-log-list');
+  if (!list) return;
+  list.innerHTML = '';
+  loraMessages.forEach(m => {
+    const el = document.createElement('div');
+    const isSent = m.sent;
+    el.style.cssText = `display:flex;flex-direction:column;align-items:${isSent ? 'flex-end' : 'flex-start'};margin-bottom:2px;`;
+    const bubble = document.createElement('div');
+    bubble.style.cssText = `max-width:85%;padding:6px 10px;border-radius:${isSent ? '12px 12px 2px 12px' : '12px 12px 12px 2px'};font-size:12px;line-height:1.4;${isSent ? 'background:var(--accent);color:#fff;' : 'background:var(--surface2);border:1px solid var(--border);color:var(--text);'}`;
+    bubble.textContent = m.text;
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size:9px;color:var(--hint);margin-top:2px;';
+    const timeStr = m.ts.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+    meta.textContent = isSent ? timeStr : `${m.name || m.from} · ${timeStr}`;
+    el.appendChild(bubble);
+    el.appendChild(meta);
+    list.appendChild(el);
+  });
+  // Scroll to bottom
+  const log = document.getElementById('msg-log');
+  if (log) log.scrollTop = log.scrollHeight;
+}
+
 function receiveLoraMessage({ from, name, text }) {
   const ts = new Date();
-  loraMessages.push({ from, name, text, ts });
-  updateMsgLog();
-  // Open peers panel and show log if not already open
-  const panel = document.getElementById('peers-panel');
-  if (panel && panel.style.display === 'none') {
-    // Show notification pip on peers button instead
-    const pip = document.getElementById('peers-pip');
-    if (pip) { pip.textContent = loraMessages.length; pip.style.display = 'flex'; }
+  loraMessages.push({ from, name, text, ts, sent: false });
+  renderMsgLog();
+  // Update WiFi message pip
+  if (isWifiMode) {
+    const pip = document.getElementById('wifi-msg-pip');
+    if (pip && !wifiMsgOpen) {
+      const unread = loraMessages.filter(m => !m.sent && !m.read).length;
+      pip.textContent = unread;
+      pip.style.display = 'flex';
+    }
+    if (wifiMsgOpen) wifiSyncMsgLog();
+  }
+  // Flash menu button in BLE mode
+  if (!isWifiMode && currentPanel !== 'panel-peers') {
+    const menuBtn = document.getElementById('menu-btn');
+    if (menuBtn) {
+      menuBtn.style.borderColor = 'var(--accent)';
+      menuBtn.style.color = 'var(--accent)';
+      setTimeout(() => {
+        if (currentPanel !== 'panel-peers') {
+          menuBtn.style.borderColor = '';
+          menuBtn.style.color = '';
+        }
+      }, 3000);
+    }
   }
   log(`MSG from ${name || from}: ${text}`, 'ok');
 }
 
-function updateMsgLog() {
-  const log = document.getElementById('msg-log');
-  const list = document.getElementById('msg-log-list');
-  if (!log || !list) return;
-  if (loraMessages.length === 0) { log.style.display = 'none'; return; }
-  log.style.display = 'block';
-  list.innerHTML = '';
-  [...loraMessages].reverse().slice(0, 10).forEach(m => {
-    const el = document.createElement('div');
-    el.style.cssText = 'font-size:11px;color:var(--text);padding:3px 0;border-bottom:1px solid var(--border);';
-    el.innerHTML = `<span style="color:var(--accent);font-weight:600;">${m.name || m.from}</span>: ${m.text}
-      <span style="color:var(--hint);font-size:9px;float:right;">${m.ts.toLocaleTimeString('en-GB',{hour12:false,hour:'2-digit',minute:'2-digit'})}</span>`;
-    list.appendChild(el);
-  });
-}
+function updateMsgLog() { renderMsgLog(); }
 
 function updateMsgTargetSelect() {
   const sel = document.getElementById('msg-target-select');
@@ -3362,11 +5351,15 @@ async function sendLoraMessage() {
   if (!input || !sel || !input.value.trim()) return;
   const text = input.value.trim();
   const target = sel.value;
+  const cmd = target === 'BC' ? `SENDMSG:${text}` : `SENDMSGDM:${target}:${text}`;
   try {
-    const cmd = target === 'BC'
-      ? `SENDMSG:${text}`
-      : `SENDMSGDM:${target}:${text}`;
-    await setChar.writeValueWithResponse(new TextEncoder().encode(cmd));
+    if (isWifiMode) {
+      await wifiSendCmd(cmd);
+    } else {
+      await setChar.writeValueWithResponse(new TextEncoder().encode(cmd));
+    }
+    loraMessages.push({ from: 'me', name: 'Me', text, ts: new Date(), sent: true });
+    renderMsgLog();
     input.value = '';
     log(`Sent: ${text}`, 'ok');
   } catch(e) {
@@ -3375,6 +5368,7 @@ async function sendLoraMessage() {
 }
 
 function updatePeerMarker(id) {
+  if (isWifiMode) return;
   const p = loraPeers[id];
   if (!p) return;
   const stale = (Date.now() - p.ts) > LORA_STALE_MS;
@@ -3439,6 +5433,7 @@ function clearDistanceLine(id) {
 }
 
 function updateDistanceLine(id) {
+  if (isWifiMode) return;
   if (!selectedPeers.has(id)) return;
   const p = loraPeers[id];
   if (!p || !p.lat || !p.lon) { clearDistanceLine(id); return; }
@@ -3492,11 +5487,13 @@ function updateDistanceLine(id) {
 }
 
 function updateAllDistanceLines() {
+  if (isWifiMode) return;
   selectedPeers.forEach(id => updateDistanceLine(id));
 }
 
 // ── Peer track line ───────────────────────────────────────────────────────────
 function updatePeerTrack(id) {
+  if (isWifiMode) return;
   const t = peerTracks[id];
   if (!t || t.pts.length < 2) return;
   if (t.layer) {
@@ -3706,7 +5703,7 @@ function updatePeerPanel() {
           👁 Follow</button>
         <button onclick="event.stopPropagation();if(loraPeers['${id}']&&loraPeers['${id}'].lat)map.panTo([loraPeers['${id}'].lat,loraPeers['${id}'].lon])"
           style="flex:1;padding:4px 0;font-size:10px;border-radius:5px;cursor:pointer;
-                 background:transparent;color:var(--muted);border:1px solid var(--border2);">
+                 background:var(--surface2);color:var(--text);border:1px solid var(--border2);">
           🎯 Locate</button>
       </div>`;
     div.onclick = () => updatePeerPanel(); // refresh panel state
@@ -3718,11 +5715,11 @@ function updatePeerPanel() {
 function updatePeerCountPip() {
   const count = Object.keys(loraPeers).filter(id => (Date.now() - loraPeers[id].ts) < LORA_EXPIRE_MS).length;
   const pip = document.getElementById('peer-count-pip');
-  if (pip) { pip.style.display = count > 0 ? 'flex' : 'none'; pip.textContent = count; }
+  if (pip && !isWifiMode) { pip.style.display = count > 0 ? 'flex' : 'none'; pip.textContent = count; }
   const desc = document.getElementById('menu-peers-desc');
   if (desc) desc.textContent = count > 0 ? `${count} device${count>1?'s':''} in range` : 'No peers in range';
   const badge = document.getElementById('menu-peers-badge');
-  if (badge) { badge.textContent = count; badge.style.display = count > 0 ? '' : 'none'; }
+  if (badge && !isWifiMode) { badge.textContent = count; badge.style.display = count > 0 ? '' : 'none'; }
 }
 
 function togglePeerPanel() {
@@ -3755,8 +5752,7 @@ function loraSettingsChanged() {
 }
 
 async function saveLoraSettings() {
-  if (!setChar) { log('Not connected', 'warn'); return; }
-  // Read from whichever control was used (peer panel or settings tab)
+  if (!isWifiMode && !setChar) { log('Not connected', 'warn'); return; }
   const rs  = document.getElementById('lora-region-select');
   const is  = document.getElementById('lora-interval-input');
   const rst = document.getElementById('lora-region-settings');
@@ -3765,13 +5761,11 @@ async function saveLoraSettings() {
   const interval = parseInt((is || ist).value) || 30;
   loraRegionIdx   = region;
   loraIntervalSec = Math.max(10, Math.min(300, interval));
-  // Sync all inputs
   [rs, rst].forEach(el => { if (el) el.value = loraRegionIdx; });
   [is, ist].forEach(el => { if (el) el.value = loraIntervalSec; });
   try {
-    await setChar.writeValueWithResponse(
-      new TextEncoder().encode(`SETLORA:${loraRegionIdx}|${loraIntervalSec}`)
-    );
+    // WiFi uses colon separator, BLE uses pipe — firmware handles both
+    await sendCmd(`SETLORA:${loraRegionIdx}:${loraIntervalSec}`);
     log(`LoRa settings saved: ${LORA_REGIONS[loraRegionIdx]} / ${loraIntervalSec}s`, 'ok');
     const status = document.getElementById('lora-status');
     if (status) { status.textContent = `Saved — ${LORA_REGIONS[loraRegionIdx]}, ${loraIntervalSec}s interval`; status.style.color = 'var(--accent)'; }
@@ -3809,7 +5803,7 @@ setInterval(() => {
 }, 15000);
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-if (!navigator.bluetooth) {
+if (!navigator.bluetooth && !isWifiMode) {
   setTimeout(() => {
     document.getElementById('no-ble-notice').style.display = 'flex';
   }, 800);
@@ -3838,14 +5832,34 @@ try { document.getElementById('lora-save-btn').onclick     = saveLoraSettings; }
 try { document.getElementById('scan-btn').onclick          = scanNetworks; } catch(e) {}
 try { document.getElementById('pin-cancel-btn').onclick    = cancelPin; } catch(e) {}
 
-log('App ready. Click "Connect" to start.');
+log(isWifiMode ? 'WiFi mode — connecting to device…' : 'App ready. Click "Connect" to start.');
+// Show offline map message if Leaflet didn't load
+if (typeof L !== 'undefined' && L.noOffline) {
+  radarStart();  // starts canvas radar and WiFi UI
+}
+// Start phone GPS immediately — shows position on map before device connects
+phoneGpsStart();
+// Auto-start WiFi mode if served from device AP
+if (isWifiMode) { setTimeout(wifiModeStart, 500); }
 (function() {
   const o = document.getElementById('stats-overlay');
   const a = document.getElementById('stat-age-row');
-  if (o) o.classList.add('disconnected');
-  if (a) a.textContent = 'Not connected';
   const menuBtn = document.getElementById('menu-btn');
-  if (menuBtn) menuBtn.style.display = 'none';
+  const connectBtn = document.getElementById('connect-btn');
+  if (isWifiMode) {
+    if (connectBtn) connectBtn.style.display = 'none';
+    const hint = document.getElementById('connect-hint');
+    if (hint) hint.style.display = 'none';
+    const fixBadge = document.getElementById('fix-badge');
+    if (fixBadge) fixBadge.style.display = 'flex';
+    if (menuBtn) menuBtn.style.display = '';
+    if (o) o.style.display = 'none';
+    if (a) a.textContent = 'Connecting…';
+  } else {
+    if (o) o.classList.add('disconnected');
+    if (a) a.textContent = 'Not connected';
+    if (menuBtn) menuBtn.style.display = 'none';
+  }
 })();
 setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 200);
 
