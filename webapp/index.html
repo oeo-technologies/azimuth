@@ -270,6 +270,20 @@ body.wifi-mode.wifi-light .fix-badge.active #fix-text { color: #1a7f37 !importan
 @media (max-width: 480px) {
   #stats-overlay { display:flex; }
   header { padding: 0 10px; gap: 6px; }
+  /* Panels full-width on mobile */
+  .az-panel { width: 100% !important; max-width: 100% !important; }
+  /* Larger touch targets */
+  .az-menu-item { min-height: 52px; }
+  .az-back-btn { width: 36px !important; height: 36px !important; }
+  /* Log panel taller on mobile */
+  .log-panel { height: 44px; }
+  .log-panel.expanded { height: 180px; }
+  /* Stats overlay full width on mobile */
+  #stats-overlay { left: 8px; right: 8px; min-width: unset; }
+  /* Header — hide less important items on very small screens */
+  #theme-btn { display: none !important; }
+  /* Offline maps panel comfortable on mobile */
+  #omap-radius-btns button { padding: 10px 4px; }
 }
 
 /* ── Set-opt buttons (settings modal) ── */
@@ -394,10 +408,21 @@ body.wifi-mode.wifi-light .fix-badge.active #fix-text { color: #1a7f37 !importan
 <body>
 
 <div id="no-ble-notice">
-  <h2>Web Bluetooth not available</h2>
-  <p>This app requires Web Bluetooth (Chrome or Edge on desktop, Chrome on Android).
-     Safari and Firefox do not support Web Bluetooth.<br><br>
-     Open in Chrome and ensure you are on HTTPS or localhost.</p>
+  <div style="background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:24px 28px;max-width:360px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.12);">
+    <h2>Web Bluetooth not available</h2>
+    <p>BLE connection requires Chrome or Edge on desktop, or Chrome on Android. Safari and Firefox are not supported.<br><br>
+    You can still use <strong>Offline Maps</strong> to cache map tiles for field use.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px;">
+      <button onclick="document.getElementById('no-ble-notice').style.display='none'"
+        style="padding:10px 20px;background:var(--accent);border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">
+        Continue anyway
+      </button>
+      <a href="https://www.google.com/chrome/" target="_blank"
+        style="padding:10px 20px;background:transparent;border:1px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:12px;text-decoration:none;display:block;">
+        Get Chrome
+      </a>
+    </div>
+  </div>
 </div>
 
 <header>
@@ -5948,18 +5973,34 @@ function omapGetTileTemplate() {
   return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 }
 
+async function omapGetSW() {
+  // Get active SW — controller may be null on first load
+  if (navigator.serviceWorker.controller) return navigator.serviceWorker.controller;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg && (reg.active || reg.installing || reg.waiting);
+}
+
 async function omapStartDownload() {
   if (omapDownloading) return;
-  if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
-    log('Service worker not ready — reload the app first', 'warn');
+  if (!navigator.serviceWorker) {
+    log('Service workers not supported in this browser', 'warn');
     return;
   }
-  // Need current position
-  const lat = lastData && lastData.lat;
-  const lon = lastData && lastData.lon;
-  if (!lat || !lon) {
-    log('No GPS position — connect to device first', 'warn');
-    showToast('No GPS position yet', '⚠');
+  const sw = await omapGetSW();
+  if (!sw) {
+    log('Service worker not ready — reload the page and try again', 'warn');
+    showToast('Reload page first', '⚠');
+    return;
+  }
+  // Need current position — use map centre as fallback
+  let lat = lastData && lastData.lat;
+  let lon = lastData && lastData.lon;
+  if (!lat && !lon) {
+    try { const c = map.getCenter(); lat = c.lat; lon = c.lng; } catch {}
+  }
+  if (!lat && !lon) {
+    log('No position — connect to device or pan the map first', 'warn');
+    showToast('No position yet', '⚠');
     return;
   }
 
@@ -6000,7 +6041,7 @@ async function omapStartDownload() {
   };
   navigator.serviceWorker.addEventListener('message', handler);
 
-  navigator.serviceWorker.controller.postMessage({
+  sw.postMessage({
     type: 'DOWNLOAD_TILES',
     tiles: limited,
     tileUrlTemplate: omapGetTileTemplate()
@@ -6016,7 +6057,9 @@ function omapCancelDownload() {
 }
 
 async function omapClearCache() {
-  if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+  if (!navigator.serviceWorker) return;
+  const sw = await omapGetSW();
+  if (!sw) return;
   const handler = e => {
     if (e.data.type === 'TILES_CLEARED') {
       navigator.serviceWorker.removeEventListener('message', handler);
@@ -6026,13 +6069,15 @@ async function omapClearCache() {
     }
   };
   navigator.serviceWorker.addEventListener('message', handler);
-  navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_TILES' });
+  sw.postMessage({ type: 'CLEAR_TILES' });
 }
 
-function omapRefreshStatus() {
-  if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+async function omapRefreshStatus() {
+  if (!navigator.serviceWorker) return;
+  const sw = await omapGetSW();
+  if (!sw) {
     const el = document.getElementById('omap-tile-count');
-    if (el) el.textContent = 'Not available';
+    if (el) el.textContent = 'Reload to enable';
     return;
   }
   const handler = e => {
@@ -6051,7 +6096,7 @@ function omapRefreshStatus() {
     }
   };
   navigator.serviceWorker.addEventListener('message', handler);
-  navigator.serviceWorker.controller.postMessage({ type: 'TILE_CACHE_SIZE' });
+  sw.postMessage({ type: 'TILE_CACHE_SIZE' });
 }
 
 // Refresh offline maps status when panel is opened — hook into openPanel
