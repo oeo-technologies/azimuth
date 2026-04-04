@@ -3641,9 +3641,9 @@ function wxStopInterval() {
 
 // ── Map tile switcher ────────────────────────────────────────────────────
 const tileSets = [
-  { name: 'Standard', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',                    attr: '© OpenStreetMap contributors' },
-  { name: 'Outdoors', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attr: '© OpenStreetMap © CARTO' },
-  { name: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',    attr: '© OpenStreetMap © CARTO' },
+  { name: 'Standard', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',                    attr: '© OpenStreetMap contributors', maxNativeZoom: 19 },
+  { name: 'Outdoors', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attr: '© OpenStreetMap © CARTO', maxNativeZoom: 19 },
+  { name: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',    attr: '© OpenStreetMap © CARTO', maxNativeZoom: 19 },
 ];
 let currentTileIdx = 0;
 let currentTileLayer = null;
@@ -3652,7 +3652,7 @@ function cycleTileLayer() {
   currentTileIdx = (currentTileIdx + 1) % tileSets.length;
   const ts = tileSets[currentTileIdx];
   if (currentTileLayer) map.removeLayer(currentTileLayer);
-  currentTileLayer = L.tileLayer(ts.url, { maxZoom: 20, attribution: ts.attr }).addTo(map);
+  currentTileLayer = L.tileLayer(ts.url, { maxZoom: 20, maxNativeZoom: ts.maxNativeZoom||19, attribution: ts.attr }).addTo(map);
   setEl('map-type-label', 'text', ts.name);
   // Flash label briefly
   const lbl = document.getElementById('map-type-label');
@@ -3937,7 +3937,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 });
 // CartoDB Voyager (Outdoors) — no Referer required, works from any origin
-currentTileLayer = L.tileLayer(tileSets[0].url, { maxZoom:20, attribution: tileSets[0].attr }).addTo(map);
+currentTileLayer = L.tileLayer(tileSets[0].url, { maxZoom:20, maxNativeZoom: tileSets[0].maxNativeZoom||19, attribution: tileSets[0].attr }).addTo(map);
 
 // Marker — rebuilt with device name label once connected
 function buildMarkerIcon(label, approx) {
@@ -6170,7 +6170,7 @@ function applyTheme(t) {
     currentTileIdx = preferredIdx;
     if (currentTileLayer) map.removeLayer(currentTileLayer);
     const ts = tileSets[currentTileIdx];
-    currentTileLayer = L.tileLayer(ts.url, { maxZoom: 20, attribution: ts.attr }).addTo(map);
+    currentTileLayer = L.tileLayer(ts.url, { maxZoom: 20, maxNativeZoom: ts.maxNativeZoom||19, attribution: ts.attr }).addTo(map);
     setEl('map-type-label', 'text', ts.name);
   }
 
