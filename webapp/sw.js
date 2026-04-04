@@ -1,4 +1,4 @@
-const CACHE = 'azimuth-v2';
+const CACHE = 'azimuth-v3';
 const TILE_CACHE = 'azimuth-tiles-v1';
 
 const PRECACHE = [
