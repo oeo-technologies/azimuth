@@ -5918,6 +5918,8 @@ try { document.getElementById('scan-btn').onclick          = scanNetworks; } cat
 try { document.getElementById('pin-cancel-btn').onclick    = cancelPin; } catch(e) {}
 
 log(isWifiMode ? 'WiFi mode — connecting to device…' : 'App ready. Click "Connect" to start.');
+// Always show menu button — gives access to Offline Maps without needing a device
+try { document.getElementById('menu-btn').style.display = 'flex'; } catch(e) {}
 // Show offline map message if Leaflet didn't load
 if (typeof L !== 'undefined' && L.noOffline) {
   radarStart();  // starts canvas radar and WiFi UI
