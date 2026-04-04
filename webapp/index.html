@@ -3641,9 +3641,9 @@ function wxStopInterval() {
 
 // ── Map tile switcher ────────────────────────────────────────────────────
 const tileSets = [
+  { name: 'Standard', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',                    attr: '© OpenStreetMap contributors' },
   { name: 'Outdoors', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attr: '© OpenStreetMap © CARTO' },
   { name: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',    attr: '© OpenStreetMap © CARTO' },
-  { name: 'Standard', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',                    attr: '© OpenStreetMap contributors' },
 ];
 let currentTileIdx = 0;
 let currentTileLayer = null;
@@ -5966,12 +5966,8 @@ function lon2tile(lon, z) { return Math.floor((lon + 180) / 360 * Math.pow(2, z)
 function lat2tile(lat, z) { return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z)); }
 
 function omapGetTileTemplate() {
-  // Get current tile layer URL template from Leaflet map
-  try {
-    const layers = [];
-    map.eachLayer(l => { if (l._url) layers.push(l._url); });
-    if (layers.length) return layers[0];
-  } catch {}
+  // Always use OSM Standard for caching — no subdomain or retina variables
+  // so cached URLs match incoming Leaflet requests exactly
   return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 }
 
