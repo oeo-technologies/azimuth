@@ -46,21 +46,6 @@ self.addEventListener('fetch', e => {
       caches.open(TILE_CACHE).then(async cache => {
         const cached = await cache.match(e.request);
         if (cached) return cached;
-
-        // Over-zoom fallback — if z>14 and offline, try serving z14 tile
-        const parts = url.pathname.match(/\/(\d+)\/(\d+)\/(\d+)\.png$/);
-        if (parts) {
-          const z = parseInt(parts[1]), x = parseInt(parts[2]), y = parseInt(parts[3]);
-          if (z > 14) {
-            const scale = 2 ** (z - 14);
-            const z14x = Math.floor(x / scale);
-            const z14y = Math.floor(y / scale);
-            const z14url = url.origin + url.pathname.replace(`/${z}/${x}/${y}`, `/14/${z14x}/${z14y}`);
-            const fallback = await cache.match(z14url);
-            if (fallback) return fallback;
-          }
-        }
-
         return fetch(e.request).then(response => {
           if (response && response.status === 200) {
             cache.put(e.request, response.clone());
