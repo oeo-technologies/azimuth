@@ -2792,6 +2792,20 @@ void apiHandleCmd() {
       display.invertDisplay(!setBrightFull);
       saveSettings();
     }
+  } else if (body.startsWith("APMODE:")) {
+    String v = body.substring(7);
+    if (v == "0") {
+      apStop();
+      webServer.send(200, "application/json", "{\"ap\":0}");
+      return;
+    } else {
+      apStart();
+      char resp[128];
+      snprintf(resp, sizeof(resp), "{\"ap\":1,\"ssid\":\"%s\",\"ip\":\"%s\",\"pass\":\"%s\"}",
+        apSSID, WiFi.softAPIP().toString().c_str(), apPass);
+      webServer.send(200, "application/json", resp);
+      return;
+    }
   }
 
   webServer.send(200, "application/json", "{\"ok\":1}");

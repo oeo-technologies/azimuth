@@ -1875,7 +1875,10 @@ body.wifi-mode {
       </div>
       <button onclick="omapCancelDownload()" style="width:100%;padding:8px;background:transparent;border:1px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:12px;cursor:pointer;">Cancel</button>
     </div>
-    <div style="font-size:10px;color:var(--hint);line-height:1.5;border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">Tiles are cached in your browser. Connect to the internet before downloading. Cached maps work offline when connected to the device hotspot.</div>
+    <div style="font-size:10px;color:var(--hint);line-height:1.5;border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">
+      <b style="color:var(--text);">Android / Chrome / Desktop</b> — download tiles here, then use the map offline via BLE or the device hotspot.<br><br>
+      <b style="color:var(--text);">iOS / Safari</b> — cached maps are not available due to browser limitations. Map requires an internet connection. Offline situational awareness is available via the radar view when connected to the device hotspot.
+    </div>
   </div>
 </div>
 
