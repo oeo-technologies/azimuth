@@ -6126,7 +6126,7 @@ if (isWifiMode) { setTimeout(wifiModeStart, 500); }
   } else {
     if (o) o.classList.add('disconnected');
     if (a) a.textContent = 'Not connected';
-    if (menuBtn) menuBtn.style.display = 'none';
+    // Menu button stays visible — needed for Offline Maps without a device connection
   }
 })();
 setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 200);
