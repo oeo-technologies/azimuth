@@ -818,6 +818,8 @@ body.wifi-mode.wifi-light .fix-badge.active #fix-text { color: #1a7f37 !importan
 .az-panel.open { display: flex; }
 /* WiFi mode — hide items that don't apply */
 body.wifi-mode .ble-only-item { display: none !important; }
+body.wifi-mode #menu-btn { border-color: rgba(255,255,255,0.2) !important; color: #8b949e; }
+body.wifi-mode.wifi-light #menu-btn { border-color: rgba(0,0,0,0.15) !important; color: #656d76; }
 body.wifi-mode #menu-peers-badge { display: none !important; }
 body.wifi-mode #menu-wayf-badge { display: none !important; }
 body.wifi-mode #menu-item-peers { display: none !important; }
@@ -1124,6 +1126,10 @@ body.wifi-mode {
 .az-tab-bar { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .az-tab { flex: 1; padding: 9px 4px; font-size: 11px; font-weight: 500; text-align: center; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; transition: color .12s, border-color .12s; font-family: var(--font); background: none; border-left: none; border-right: none; border-top: none; }
 .az-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+/* Group template buttons */
+.group-template-btn { padding: 8px 14px; background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; color: var(--muted); font-family: var(--font); font-size: 11px; font-weight: 500; cursor: pointer; transition: all .15s; }
+.group-template-btn:hover { border-color: var(--accent); color: var(--text); }
+.group-template-btn.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
 /* Field inputs inside panels */
 .az-field-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--hint); margin-bottom: 4px; }
 .az-field-input { width: 100%; padding: 9px 12px; border: 1.5px solid var(--border2); border-radius: 8px; background: var(--surface2); font-size: 13px; color: var(--text); font-family: var(--font); }
@@ -1195,6 +1201,23 @@ body.wifi-mode {
         <div class="az-menu-desc" id="menu-wayf-desc">No waypoints set</div>
       </div>
       <span class="az-badge" id="menu-wayf-badge" style="display:none;"></span>
+      <span class="az-menu-arrow">›</span>
+    </div>
+
+    <div class="az-menu-item" onclick="openPanel('panel-groups')" id="menu-item-groups">
+      <div class="az-menu-icon" style="background:#E6EAF0;">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <circle cx="5" cy="6" r="2" stroke="#5A6472" stroke-width="1.3"/>
+          <circle cx="13" cy="6" r="2" stroke="#5A6472" stroke-width="1.3"/>
+          <circle cx="9" cy="13" r="2" stroke="#5A6472" stroke-width="1.3"/>
+          <path d="M6.5 7.5L8 11.5M11.5 7.5L10 11.5" stroke="#5A6472" stroke-width="1.2" stroke-linecap="round" stroke-dasharray="1.5 2"/>
+        </svg>
+      </div>
+      <div class="az-menu-info">
+        <div class="az-menu-name">Groups</div>
+        <div class="az-menu-desc" id="menu-groups-desc">Personal mode</div>
+      </div>
+      <span class="az-badge" id="menu-groups-badge" style="display:none;"></span>
       <span class="az-menu-arrow">›</span>
     </div>
 
@@ -1335,6 +1358,196 @@ body.wifi-mode {
           onkeydown="if(event.key==='Enter'){event.preventDefault();sendLoraMessage()}"/>
         <button onclick="sendLoraMessage()" style="padding:7px 14px;background:var(--accent);border:none;border-radius:7px;color:#fff;font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;">Send</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── GROUPS PANEL ─────────────────────────────────────────────────── -->
+<div id="panel-groups" class="az-panel">
+  <div class="az-panel-hdr">
+    <button class="az-back-btn" onclick="openPanel('panel-main')">‹</button>
+    <div>
+      <div class="az-panel-title">Groups</div>
+      <div id="groups-panel-subtitle" style="font-size:10px;color:var(--hint);margin-top:1px;">Personal mode</div>
+    </div>
+    <button onclick="groupsShowNewModal()" style="margin-left:auto;padding:5px 10px;background:var(--accent);border:none;border-radius:6px;color:#fff;font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;">+ New</button>
+  </div>
+  <div class="az-panel-body" id="groups-panel-body" style="padding:0;">
+    <!-- Group list -->
+    <div id="groups-list" style="padding:0;">
+      <!-- Personal mode toggle -->
+      <div class="az-menu-item" onclick="groupsSetActive(-1)" id="groups-personal-item" style="border-bottom:1px solid var(--border);">
+        <div style="width:18px;height:18px;border-radius:50%;border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;margin-right:10px;">
+          <div id="groups-personal-dot" style="width:10px;height:10px;border-radius:50%;background:var(--accent);"></div>
+        </div>
+        <div class="az-menu-info">
+          <div class="az-menu-name">Personal Mode</div>
+          <div class="az-menu-desc">Default network key</div>
+        </div>
+      </div>
+      <!-- Dynamic group items inserted here -->
+      <div id="groups-items"></div>
+    </div>
+    <!-- Empty state -->
+    <div id="groups-empty" style="padding:20px 16px;text-align:center;display:none;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">No groups created yet.</div>
+      <div style="font-size:11px;color:var(--hint);line-height:1.5;">Create a group to manage devices for events, fell races, or team coordination.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── GROUP DETAIL PANEL ─────────────────────────────────────────────────── -->
+<div id="panel-group-detail" class="az-panel">
+  <div class="az-panel-hdr">
+    <button class="az-back-btn" onclick="openPanel('panel-groups')">‹</button>
+    <div>
+      <div class="az-panel-title" id="group-detail-title">Group</div>
+      <div id="group-detail-subtitle" style="font-size:10px;color:var(--hint);margin-top:1px;">0 devices</div>
+    </div>
+    <button onclick="groupsShowEditModal()" style="margin-left:auto;padding:5px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;">Edit</button>
+  </div>
+  <div class="az-panel-body" style="padding:0;display:flex;flex-direction:column;">
+    <!-- Step 1: Key share section -->
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <div style="width:20px;height:20px;border-radius:50%;background:var(--warn);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;">1</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text);">Share Network Key</div>
+        <div style="margin-left:auto;font-size:10px;color:var(--hint);font-family:monospace;" id="group-detail-key">••••••••••••••••</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="groupsKeyShare()" id="group-key-share-btn" style="flex:1;padding:10px;background:var(--warn-bg);border:1px solid var(--warn);border-radius:8px;color:var(--warn);font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M3.5 5.5L7 9l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 10v2h12v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Share Key
+        </button>
+        <button onclick="groupsCancelKeyShare()" style="padding:10px 14px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;">Cancel</button>
+      </div>
+      <div style="font-size:9px;color:var(--hint);margin-top:6px;line-height:1.4;">Broadcasts key to all devices in LoRa range. Do this at the start line with all devices present.</div>
+      <div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.4;">Devices will see: <strong>"Join <span id="group-detail-leader-name">your device</span>'s network?"</strong></div>
+    </div>
+    <!-- Step 2: Registration section -->
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <div style="width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;">2</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text);">Discover & Register Devices</div>
+      </div>
+      <button onclick="groupsDiscover()" id="group-discover-btn" style="width:100%;padding:10px;background:var(--accent);border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;">
+        Discover Devices
+      </button>
+      <div style="font-size:9px;color:var(--hint);margin-top:6px;line-height:1.4;">Finds devices that received the key, then assign runner names.</div>
+      <div id="group-discover-status" style="font-size:10px;color:var(--hint);margin-top:6px;text-align:center;display:none;"></div>
+    </div>
+    <!-- Devices list -->
+    <div style="flex:1;overflow-y:auto;">
+      <div style="padding:10px 16px 6px;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Registered Devices</div>
+      <div id="group-devices-list" style="padding:0 8px 12px;"></div>
+      <div id="group-devices-empty" style="padding:12px 16px;font-size:11px;color:var(--hint);text-align:center;">No devices registered yet. Share key first, then discover devices.</div>
+    </div>
+  </div>
+  <div class="az-panel-footer" style="padding:12px 16px;border-top:1px solid var(--border);">
+    <button onclick="groupsDelete()" style="width:100%;padding:10px;background:var(--danger-bg);border:1px solid var(--danger);border-radius:8px;color:var(--danger);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;">Delete Group</button>
+  </div>
+</div>
+
+<!-- ── GROUP NEW/EDIT MODAL ─────────────────────────────────────────────────── -->
+<div id="group-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface);border-radius:12px;width:100%;max-width:360px;max-height:90vh;overflow-y:auto;">
+    <div style="padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:15px;font-weight:600;color:var(--text);" id="group-modal-title">New Group</div>
+      <button onclick="groupsCloseModal()" style="background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;padding:4px;">×</button>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Group Name</label>
+        <input type="text" id="group-modal-name" maxlength="32" placeholder="e.g. Lakeland Fell Race 2026" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;">
+      </div>
+      <!-- TEMPLATES: Commented out pending use case research
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Template</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="group-template-btn active" data-template="general" onclick="groupsSelectTemplate('general')">General</button>
+          <button class="group-template-btn" data-template="fell_race" onclick="groupsSelectTemplate('fell_race')">Fell Race</button>
+          <button class="group-template-btn" data-template="sar" onclick="groupsSelectTemplate('sar')">SAR</button>
+        </div>
+      </div>
+      -->
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Network Key</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="group-modal-key" maxlength="16" placeholder="16 characters" style="flex:1;padding:10px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:monospace;font-size:12px;">
+          <button onclick="groupsGenerateKey()" style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:11px;cursor:pointer;white-space:nowrap;">Generate</button>
+        </div>
+        <div style="font-size:9px;color:var(--hint);margin-top:4px;">Must be exactly 16 characters. Shared with all devices in this group.</div>
+      </div>
+      <!-- ROSTER IMPORT: Commented out pending use case research
+      <div id="group-modal-roster-section">
+        <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Import Roster (optional)</label>
+        <textarea id="group-modal-roster" rows="4" placeholder="Paste names, one per line:&#10;Runner 1&#10;Runner 2&#10;Marshal CP1" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:12px;resize:vertical;"></textarea>
+        <div style="font-size:9px;color:var(--hint);margin-top:4px;">Or <a href="#" onclick="groupsUploadCSV();return false;" style="color:var(--accent);">upload CSV file</a></div>
+        <input type="file" id="group-csv-upload" accept=".csv" style="display:none;" onchange="groupsHandleCSV(this)">
+      </div>
+      -->
+    </div>
+    <div style="padding:16px;border-top:1px solid var(--border);display:flex;gap:10px;">
+      <button onclick="groupsCloseModal()" style="flex:1;padding:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;">Cancel</button>
+      <button onclick="groupsSaveModal()" style="flex:1;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;" id="group-modal-save">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── KEY SHARE CONFIRM MODAL ─────────────────────────────────────────────────── -->
+<div id="keyshare-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface);border-radius:12px;width:100%;max-width:340px;overflow:hidden;">
+    <div style="padding:20px;text-align:center;">
+      <div style="width:48px;height:48px;background:var(--warn-bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 17h.01" stroke="var(--warn)" stroke-width="2" stroke-linecap="round"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="var(--warn)" stroke-width="1.5"/></svg>
+      </div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px;">Share Network Key?</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;">This will broadcast the network key to <strong>ALL devices</strong> in LoRa range (~10km). Only do this at the start line with your devices present.</div>
+    </div>
+    <div style="padding:16px;border-top:1px solid var(--border);display:flex;gap:10px;">
+      <button onclick="groupsCloseKeyshareModal()" style="flex:1;padding:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;">Cancel</button>
+      <button onclick="groupsConfirmKeyShare()" style="flex:1;padding:12px;background:var(--warn);border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">Share Key</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── DISCOVER DEVICES MODAL ─────────────────────────────────────────────────── -->
+<div id="discover-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface);border-radius:12px;width:100%;max-width:400px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
+    <div style="padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:15px;font-weight:600;color:var(--text);">Discover Devices</div>
+      <button onclick="groupsCloseDiscoverModal()" style="background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;padding:4px;">×</button>
+    </div>
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2);">
+      <button onclick="groupsSendDiscover()" id="discover-send-btn" style="width:100%;padding:10px;background:var(--accent);border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;">
+        Send Discover Broadcast
+      </button>
+      <div id="discover-status" style="font-size:10px;color:var(--hint);margin-top:6px;text-align:center;">Waiting to send...</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:0;">
+      <div id="discover-list" style="padding:8px;"></div>
+      <div id="discover-empty" style="padding:20px 16px;font-size:11px;color:var(--hint);text-align:center;">No devices found yet. Tap "Send Discover Broadcast" to search.</div>
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:10px;">
+      <button onclick="groupsCloseDiscoverModal()" style="flex:1;padding:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;">Cancel</button>
+      <button onclick="groupsAssignAll()" id="discover-assign-btn" style="flex:1;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;" disabled>Assign Names</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── KEY REQUEST RECEIVED MODAL (recipient side) ─────────────────────────── -->
+<div id="keyreq-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface);border-radius:12px;width:100%;max-width:340px;overflow:hidden;">
+    <div style="padding:20px;text-align:center;">
+      <div style="width:48px;height:48px;background:var(--accent-bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z" fill="var(--accent)"/></svg>
+      </div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px;">Join Network?</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;"><span id="keyreq-leader">Someone</span> wants you to join their network.</div>
+    </div>
+    <div style="padding:16px;border-top:1px solid var(--border);display:flex;gap:10px;">
+      <button onclick="keyReqDecline()" style="flex:1;padding:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;">Decline</button>
+      <button onclick="keyReqAccept()" style="flex:1;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">Accept</button>
     </div>
   </div>
 </div>
@@ -1711,6 +1924,31 @@ body.wifi-mode {
       <button onclick="saveLoraKey()" style="width:100%;padding:8px;background:transparent;border:1.5px solid var(--accent);border-radius:8px;color:var(--accent);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;">Set network key</button>
       <div id="lora-key-status" style="font-size:10px;color:var(--hint);margin-top:6px;"></div>
     </div>
+    <!-- Relay Mode Section -->
+    <div style="padding:14px 16px 12px;border-top:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--hint);margin-bottom:4px;">Relay mode</div>
+          <div style="font-size:10px;color:var(--muted);line-height:1.4;">Forward packets for other devices</div>
+        </div>
+        <button id="relay-toggle" class="az-toggle" onclick="toggleRelay()"></button>
+      </div>
+      <div id="relay-stats" style="display:none;margin-top:10px;padding:10px;background:var(--surface2);border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-size:10px;color:var(--muted);">Packets relayed</span>
+          <span id="relay-count" style="font-size:10px;font-weight:600;color:var(--text);">0</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-size:10px;color:var(--muted);">Messages queued</span>
+          <span id="relay-stored" style="font-size:10px;font-weight:600;color:var(--text);">0</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="font-size:10px;color:var(--muted);">Last relay</span>
+          <span id="relay-last" style="font-size:10px;color:var(--text);">—</span>
+        </div>
+      </div>
+      <div style="font-size:9px;color:var(--hint);margin-top:8px;line-height:1.4;">Enable when stationary (checkpoint, base camp) to extend network coverage. Relays position broadcasts, SOS alerts, and group messages.</div>
+    </div>
   </div>
 </div>
 
@@ -2056,7 +2294,11 @@ function closeAllPanels() {
   }
   document.getElementById('az-overlay').style.display = 'none';
   const menuBtn = document.getElementById('menu-btn');
-  if (menuBtn) { menuBtn.style.borderColor = ''; menuBtn.style.color = ''; }
+  if (menuBtn) {
+    // Clear inline styles - let CSS rules handle the colors
+    menuBtn.style.borderColor = '';
+    menuBtn.style.color = '';
+  }
   drawerOpen = false;
 }
 
@@ -3081,6 +3323,19 @@ async function wifiPoll() {
         if (!isWifiMode) wpRenderMarkers();
         wpRenderPanelList();
       }
+      // Fetch groups from device (WiFi mode)
+      try {
+        const gResp = await fetch('/api/groups');
+        if (gResp.ok) {
+          const gData = await gResp.json();
+          if (gData.groups) {
+            groupsData = gData;
+            groupsRender();
+            groupsUpdateMenuDesc();
+            log('Groups loaded from device: ' + gData.groups.length, 'ok');
+          }
+        }
+      } catch(e) { /* groups endpoint may not exist on older firmware */ }
     }
     try {
       processDeviceState(d);
@@ -3429,6 +3684,7 @@ function wifiModeStart() {
   log('WiFi mode — connected to device at ' + window.location.hostname, 'ok');
   wifiPoll();
   wifiPollInterval = setInterval(wifiPoll, 1000);
+  radarStart();  // Start radar in WiFi mode (Leaflet may not load over device AP)
 }
 
 // ── Unified command sender — BLE or WiFi ─────────────────────────────────────
@@ -4186,6 +4442,11 @@ function onDisconnected() {
   updatePeerPanel();
   clearTimeout(staleTimer);  // stop stale watchdog
   updateMarkerLabel(null);   // clear device name from marker
+  // Clear groups data on disconnect - will be resynced on next connect
+  groupsData.groups = [];
+  groupsData.activeGroupIdx = -1;
+  groupsSave();
+  groupsRender();
   // Always close panels and PIN panel on disconnect
   closeAllPanels();
   document.getElementById('pin-panel').style.display = 'none';
@@ -4420,6 +4681,12 @@ function onSettingsNotify(event) {
       return;
     }
 
+    // Relay mode response
+    if (data.relay !== undefined) {
+      updateRelayUI(data);
+      return;
+    }
+
     // OWM key returned from device on connect
     if (data.owmKey !== undefined) {
       if (data.owmKey) {
@@ -4460,12 +4727,50 @@ function onSettingsNotify(event) {
                 setDeviceName(nr.name);
               }
             }
+            // Sync groups from device — clears web app groups and rebuilds from device
+            // GETGROUPS response comes via notification, not resChar read
+            const groupsPromise = new Promise((resolve) => {
+              const timeout = setTimeout(() => resolve(null), 500);
+              const handler = (event) => {
+                try {
+                  const val = new TextDecoder().decode(event.target.value);
+                  const data = extractJSON(val);
+                  if (data && data.groups !== undefined) {
+                    clearTimeout(timeout);
+                    setChar.removeEventListener('characteristicvaluechanged', handler);
+                    resolve(data);
+                  }
+                } catch(e) {}
+              };
+              setChar.addEventListener('characteristicvaluechanged', handler);
+            });
+            await setChar.writeValueWithResponse(new TextEncoder().encode("GETGROUPS")).catch(()=>{});
+            const gr = await groupsPromise;
+            if (gr && gr.groups !== undefined) {
+              // Clear existing groups and rebuild from device
+              groupsData.groups = gr.groups.map(g => ({
+                id: 'grp_' + Date.now().toString(36) + Math.random().toString(36).substr(2,4),
+                name: g.name,
+                key: '', // Device doesn't send keys back for security
+                leader: g.leader || '',
+                templ: 'general',
+                rolesEnabled: false,
+                devices: []
+              }));
+              // Set active group based on device state
+              groupsData.activeGroupIdx = gr.groups.findIndex(g => g.active);
+              groupsSave();
+              groupsRender();
+              log('Groups synced from device: ' + gr.groups.length, 'info');
+            }
             // Read saved waypoints from device
             await setChar.writeValueWithResponse(new TextEncoder().encode("GETWP")).catch(()=>{});
             // Read OWM key so web app can push weather without user re-entering it
             await setChar.writeValueWithResponse(new TextEncoder().encode("GETOWM")).catch(()=>{});
             // Read AP state so hotspot panel shows correct status on connect
             await setChar.writeValueWithResponse(new TextEncoder().encode("GETAP")).catch(()=>{});
+            // Read relay mode status
+            await setChar.writeValueWithResponse(new TextEncoder().encode("GETRELAY")).catch(()=>{});
           } catch(e) {}
           // Start weather push interval
           wxStartInterval();
@@ -4571,6 +4876,32 @@ function applySettingsToUI(s) {
     if (trackStatus) trackStatus.style.display = s.rec ? 'flex' : 'none';
     const menuDesc = document.getElementById('menu-track-desc');
     if (menuDesc) menuDesc.textContent = s.rec ? 'Recording in progress' : 'Not recording';
+    
+    // Sync track button UI with device state
+    const btn   = document.getElementById('track-btn');
+    const label = document.getElementById('track-btn-label');
+    const icon  = document.getElementById('track-btn-icon');
+    if (s.rec && !tracking) {
+      // Device is recording but UI shows stopped — sync to recording
+      tracking = true;
+      if (label) label.textContent = 'Stop track';
+      if (btn) {
+        btn.style.background  = 'var(--danger-bg)';
+        btn.style.borderColor = 'var(--danger)';
+        btn.style.color       = 'var(--danger)';
+      }
+      if (icon) icon.innerHTML = '<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5" opacity="0.4" style="animation:pulse 1s infinite"/>';
+    } else if (!s.rec && tracking) {
+      // Device stopped but UI shows recording — sync to stopped
+      tracking = false;
+      if (label) label.textContent = 'Start track';
+      if (btn) {
+        btn.style.background  = 'var(--accent-bg)';
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.color       = 'var(--accent)';
+      }
+      if (icon) icon.innerHTML = '<circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3" fill="currentColor"/>';
+    }
   }
   // Route log count — show/hide export section
   if (s.logCount !== undefined) updateRouteExportUI(s.logCount);
@@ -5058,12 +5389,20 @@ function toggleTrack() {
     btn.style.color         = 'var(--danger)';
     // Replace icon with pulsing stop square
     if (icon) icon.innerHTML = '<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5" opacity="0.4" style="animation:pulse 1s infinite"/>';
+    // Send start command to device
+    if (routeChar) {
+      routeChar.writeValue(new TextEncoder().encode('STARTREC')).catch(e => console.warn('STARTREC failed:', e));
+    }
   } else {
     if (label) label.textContent = 'Start track';
     btn.style.background    = 'var(--accent-bg)';
     btn.style.borderColor   = 'var(--accent)';
     btn.style.color         = 'var(--accent)';
     if (icon) icon.innerHTML = '<circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3" fill="currentColor"/>';
+    // Send stop command to device
+    if (routeChar) {
+      routeChar.writeValue(new TextEncoder().encode('STOPREC')).catch(e => console.warn('STOPREC failed:', e));
+    }
   }
   log(tracking ? 'Track recording started' : 'Track recording stopped', 'ok');
 }
@@ -5310,6 +5649,77 @@ function processPeerData(data) {
       if (ackRow) ackRow.style.display = 'block';
       log(`WP ACK from ${name}: ${data.wps} waypoints confirmed`, 'ok');
       showToast(`${name} received waypoints`, '📍');
+      return;
+    }
+
+    // ── Registration response (device discovered) ──────────────────────────
+    if (data.regResp) {
+      groupsHandleRegResponse(data.regResp, data.name || '');
+      return;
+    }
+
+    // ── Registration ACK (name assigned) ────────────────────────────────────
+    if (data.regAck) {
+      groupsHandleRegAck(data.regAck, data.name || '');
+      return;
+    }
+
+    // ── Key share confirmation (leader side) ────────────────────────────────
+    if (data.keyShare) {
+      log('Key share broadcast sent', 'ok');
+      showToast('Network key shared', '🔑');
+      return;
+    }
+
+    // ── Key share request received (recipient side) ─────────────────────────
+    if (data.keyReq) {
+      keyReqShow(data.leader || data.from || 'Unknown');
+      return;
+    }
+
+    // ── Key share accepted (recipient confirmed) ────────────────────────────
+    if (data.keyAccepted) {
+      keyReqHide();
+      log('Joined network: ' + (data.leader || ''), 'ok');
+      showToast('Joined network!', '✓');
+      return;
+    }
+
+    // ── Key share declined ──────────────────────────────────────────────────
+    if (data.keyDeclined) {
+      keyReqHide();
+      log('Network request declined', 'info');
+      return;
+    }
+
+    // ── Key share cancelled by leader ───────────────────────────────────────
+    if (data.keyCancelled) {
+      keyReqHide();
+      log('Network request cancelled', 'info');
+      showToast('Request cancelled', 'info');
+      return;
+    }
+
+    // ── Key ACK received (leader side — device accepted) ────────────────────
+    if (data.keyAck) {
+      log(`Device accepted: ${data.name || data.keyAck}`, 'ok');
+      showToast(`${data.name || 'Device'} joined`, '✓');
+      groupsHandleKeyAck(data.keyAck, data.name || '');
+      return;
+    }
+
+    // ── Group Leave received (device left group) ────────────────────
+    if (data.groupLeave) {
+      log(`Device left group: ${data.name || data.groupLeave}`, 'warn');
+      showToast(`${data.name || 'Device'} left group`, '⚠');
+      groupsHandleGroupLeave(data.groupLeave, data.name || '');
+      return;
+    }
+
+    // ── Groups changed on device (resync needed) ────────────────────
+    if (data.groupsChanged) {
+      log('Groups changed on device, resyncing...', 'info');
+      groupsResyncFromDevice();
       return;
     }
 
@@ -5882,6 +6292,71 @@ async function saveLoraKey() {
   }
 }
 
+// ── Relay Mode ─────────────────────────────────────────────────────────────────
+let relayEnabled = false;
+let relayCount = 0;
+let relayStored = 0;
+let relayLastTx = 0;
+
+async function getRelayStatus() {
+  if (!setChar) return;
+  try {
+    await setChar.writeValueWithResponse(new TextEncoder().encode('GETRELAY'));
+  } catch(e) {
+    console.log('getRelayStatus error:', e);
+  }
+}
+
+function updateRelayUI(data) {
+  relayEnabled = data.relay === 1;
+  relayCount = data.relayCount || 0;
+  relayStored = data.stored || 0;
+  relayLastTx = data.lastTx || 0;
+  
+  const toggle = document.getElementById('relay-toggle');
+  const stats = document.getElementById('relay-stats');
+  const countEl = document.getElementById('relay-count');
+  const storedEl = document.getElementById('relay-stored');
+  const lastEl = document.getElementById('relay-last');
+  
+  if (toggle) {
+    if (relayEnabled) {
+      toggle.classList.add('on');
+    } else {
+      toggle.classList.remove('on');
+    }
+  }
+  
+  if (stats) {
+    stats.style.display = relayEnabled ? 'block' : 'none';
+  }
+  
+  if (countEl) countEl.textContent = relayCount;
+  if (storedEl) storedEl.textContent = relayStored;
+  if (lastEl) {
+    if (relayLastTx === 0) {
+      lastEl.textContent = '—';
+    } else if (relayLastTx < 60) {
+      lastEl.textContent = `${relayLastTx}s ago`;
+    } else if (relayLastTx < 3600) {
+      lastEl.textContent = `${Math.floor(relayLastTx / 60)}m ago`;
+    } else {
+      lastEl.textContent = `${Math.floor(relayLastTx / 3600)}h ago`;
+    }
+  }
+}
+
+async function toggleRelay() {
+  if (!setChar) { log('Not connected', 'warn'); return; }
+  const newState = relayEnabled ? 0 : 1;
+  try {
+    await setChar.writeValueWithResponse(new TextEncoder().encode(`SETRELAY:${newState}`));
+    log(`Relay mode ${newState ? 'enabled' : 'disabled'}`, 'ok');
+  } catch(e) {
+    log('Relay toggle failed: ' + e.message, 'err');
+  }
+}
+
 // Periodically refresh peer panel and markers if open
 setInterval(() => {
   if (peerPanelOpen) updatePeerPanel();
@@ -6182,6 +6657,819 @@ function applyTheme(t) {
   if (meta) meta.content = t === 'canyon' ? '#854F0B' : t === 'mountain' ? '#5A6472' : '#4A7C59';
   // Modal stays open — user closes with the Close button
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GROUP TRACKING SYSTEM
+// ══════════════════════════════════════════════════════════════════════════════
+
+let groupsData = { groups: [], activeGroupIdx: -1 };
+let groupsEditingIdx = -1; // -1 = new, >= 0 = editing existing
+let groupsSelectedTemplate = 'general';
+let groupsDiscoveredDevices = []; // { id, name, assigned, newName }
+let groupsRoster = []; // imported names from CSV/paste
+
+// Load groups from localStorage
+function groupsLoad() {
+  try {
+    const stored = localStorage.getItem('azimuth_groups');
+    if (stored) {
+      groupsData = JSON.parse(stored);
+      groupsRender();
+      groupsUpdateMenuDesc();
+    }
+  } catch (e) {
+    console.warn('Groups load error:', e);
+  }
+}
+
+// Save groups to localStorage
+function groupsSave() {
+  try {
+    localStorage.setItem('azimuth_groups', JSON.stringify(groupsData));
+    groupsUpdateMenuDesc();
+  } catch (e) {
+    console.warn('Groups save error:', e);
+  }
+}
+
+// Sync groups to device
+// NOTE: Full groups JSON is too large for BLE MTU. 
+// In BLE mode, groups are stored in web app localStorage only.
+// The key is sent directly via SETKEY when sharing.
+// In WiFi mode, we can sync the full JSON.
+function groupsSyncToDevice() {
+  if (!isWifiMode) return; // Skip BLE — MTU too small
+  if (!setChar && !isWifiMode) return;
+  const json = JSON.stringify(groupsData);
+  sendCmd('SETGROUPS:' + json);
+  log('Groups synced to device');
+}
+
+// Render groups list
+function groupsRender() {
+  const container = document.getElementById('groups-items');
+  const empty = document.getElementById('groups-empty');
+  const personalDot = document.getElementById('groups-personal-dot');
+  
+  // Personal mode dot
+  if (personalDot) {
+    personalDot.style.display = groupsData.activeGroupIdx === -1 ? 'block' : 'none';
+  }
+  
+  if (!container) return;
+  
+  if (groupsData.groups.length === 0) {
+    container.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  
+  if (empty) empty.style.display = 'none';
+  
+  let html = '';
+  groupsData.groups.forEach((g, idx) => {
+    const isActive = idx === groupsData.activeGroupIdx;
+    const deviceCount = g.devices ? g.devices.length : 0;
+    html += `
+      <div class="az-menu-item" style="border-bottom:1px solid var(--border);">
+        <div onclick="groupsSetActive(${idx})" style="display:flex;align-items:center;flex:1;padding-right:8px;">
+          <div style="width:18px;height:18px;border-radius:50%;border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;margin-right:10px;">
+            <div style="width:10px;height:10px;border-radius:50%;background:var(--accent);display:${isActive ? 'block' : 'none'};"></div>
+          </div>
+          <div class="az-menu-info">
+            <div class="az-menu-name">${escapeHtml(g.name)}</div>
+            <div class="az-menu-desc">${deviceCount} device${deviceCount !== 1 ? 's' : ''} · ${g.templ || 'general'}</div>
+          </div>
+        </div>
+        <button onclick="groupsOpenDetail(${idx})" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--muted);font-size:10px;cursor:pointer;">Manage</button>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+// Update menu description
+function groupsUpdateMenuDesc() {
+  const desc = document.getElementById('menu-groups-desc');
+  if (!desc) return;
+  
+  if (groupsData.activeGroupIdx >= 0 && groupsData.groups[groupsData.activeGroupIdx]) {
+    desc.textContent = groupsData.groups[groupsData.activeGroupIdx].name;
+  } else {
+    desc.textContent = 'Personal mode';
+  }
+  
+  // Update panel subtitle too
+  const subtitle = document.getElementById('groups-panel-subtitle');
+  if (subtitle) subtitle.textContent = desc.textContent;
+}
+
+// Set active group
+async function groupsSetActive(idx) {
+  groupsData.activeGroupIdx = idx;
+  groupsSave();
+  groupsRender();
+  
+  // Switch key on device and sync stored group
+  if (setChar || isWifiMode) {
+    try {
+      if (idx >= 0 && groupsData.groups[idx]?.key) {
+        // Add/update group in device's stored groups and activate it
+        await groupsSyncStoredGroup(idx);
+        log('Switched to group: ' + groupsData.groups[idx].name, 'ok');
+      } else {
+        // Personal mode — send default key
+        await sendCmd('SETKEY:AzimuthNetwork01');
+        log('Switched to personal mode', 'ok');
+      }
+    } catch (e) {
+      log('Failed to switch: ' + e.message, 'err');
+    }
+  }
+}
+
+// Open group detail panel
+function groupsOpenDetail(idx) {
+  groupsEditingIdx = idx;
+  const g = groupsData.groups[idx];
+  if (!g) return;
+  
+  document.getElementById('group-detail-title').textContent = g.name;
+  document.getElementById('group-detail-subtitle').textContent = (g.devices?.length || 0) + ' devices';
+  document.getElementById('group-detail-key').textContent = g.key || '••••••••••••••••';
+  
+  // Show leader device name (what recipients will see)
+  const leaderNameEl = document.getElementById('group-detail-leader-name');
+  if (leaderNameEl) {
+    const deviceNameEl = document.getElementById('device-name');
+    const dn = deviceNameEl?.value || 'your device';
+    leaderNameEl.textContent = dn;
+  }
+  
+  groupsRenderDeviceList(g);
+  openPanel('panel-group-detail');
+}
+
+// Render devices in group detail
+function groupsRenderDeviceList(g) {
+  const container = document.getElementById('group-devices-list');
+  const empty = document.getElementById('group-devices-empty');
+  
+  if (!g.devices || g.devices.length === 0) {
+    container.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  
+  if (empty) empty.style.display = 'none';
+  
+  let html = '';
+  g.devices.forEach((d, i) => {
+    html += `
+      <div style="display:flex;align-items:center;padding:8px 8px;background:var(--surface2);border-radius:8px;margin-bottom:6px;">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--hint);margin-right:10px;"></div>
+        <div style="flex:1;">
+          <div style="font-size:12px;font-weight:500;color:var(--text);">${escapeHtml(d.name || 'Unnamed')}</div>
+          <div style="font-size:10px;color:var(--hint);font-family:monospace;">${d.id || '?'} ${d.role ? '· ' + d.role : ''}</div>
+        </div>
+        <button onclick="groupsRemoveDevice(${i})" style="padding:4px 8px;background:none;border:none;color:var(--danger);font-size:11px;cursor:pointer;">Remove</button>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+// Remove device from group
+function groupsRemoveDevice(deviceIdx) {
+  const g = groupsData.groups[groupsEditingIdx];
+  if (!g || !g.devices) return;
+  g.devices.splice(deviceIdx, 1);
+  groupsSave();
+  groupsSyncToDevice();
+  groupsRenderDeviceList(g);
+  document.getElementById('group-detail-subtitle').textContent = g.devices.length + ' devices';
+}
+
+// Show new group modal
+function groupsShowNewModal() {
+  groupsEditingIdx = -1;
+  groupsSelectedTemplate = 'general';
+  document.getElementById('group-modal-title').textContent = 'New Group';
+  document.getElementById('group-modal-name').value = '';
+  document.getElementById('group-modal-key').value = '';
+  document.getElementById('group-modal-roster').value = '';
+  document.getElementById('group-modal-save').textContent = 'Create';
+  
+  // Reset template buttons
+  document.querySelectorAll('.group-template-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.template === 'general');
+  });
+  
+  // Generate a key
+  groupsGenerateKey();
+  
+  document.getElementById('group-modal').style.display = 'flex';
+  // Focus the name input
+  setTimeout(() => document.getElementById('group-modal-name').focus(), 100);
+}
+
+// Show edit group modal
+function groupsShowEditModal() {
+  const g = groupsData.groups[groupsEditingIdx];
+  if (!g) return;
+  
+  groupsSelectedTemplate = g.templ || 'general';
+  document.getElementById('group-modal-title').textContent = 'Edit Group';
+  document.getElementById('group-modal-name').value = g.name;
+  document.getElementById('group-modal-key').value = g.key;
+  document.getElementById('group-modal-roster').value = '';
+  document.getElementById('group-modal-save').textContent = 'Save';
+  
+  // Set template buttons
+  document.querySelectorAll('.group-template-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.template === groupsSelectedTemplate);
+  });
+  
+  document.getElementById('group-modal').style.display = 'flex';
+}
+
+// Close modal
+function groupsCloseModal() {
+  document.getElementById('group-modal').style.display = 'none';
+}
+
+// Select template
+function groupsSelectTemplate(t) {
+  groupsSelectedTemplate = t;
+  document.querySelectorAll('.group-template-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.template === t);
+  });
+}
+
+// Generate random 16-char key
+function groupsGenerateKey() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let key = '';
+  for (let i = 0; i < 16; i++) {
+    key += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  document.getElementById('group-modal-key').value = key;
+}
+
+// Save modal (create or edit)
+function groupsSaveModal() {
+  const name = document.getElementById('group-modal-name').value.trim();
+  const key = document.getElementById('group-modal-key').value;
+  const rosterText = document.getElementById('group-modal-roster').value.trim();
+  
+  if (!name) {
+    alert('Please enter a group name');
+    return;
+  }
+  if (key.length !== 16) {
+    alert('Network key must be exactly 16 characters');
+    return;
+  }
+  
+  // Parse roster
+  const roster = rosterText ? rosterText.split('\n').map(s => s.trim()).filter(s => s) : [];
+  
+  let newIdx = -1;
+  if (groupsEditingIdx === -1) {
+    // Create new
+    const newGroup = {
+      id: 'grp_' + Date.now().toString(36),
+      name: name,
+      key: key,
+      templ: groupsSelectedTemplate,
+      rolesEnabled: groupsSelectedTemplate !== 'general',
+      overdueEnabled: false,
+      overdueThresholdMins: 10,
+      devices: roster.map((n, i) => ({ id: '', name: n, role: '' }))
+    };
+    groupsData.groups.push(newGroup);
+    newIdx = groupsData.groups.length - 1;
+  } else {
+    // Edit existing
+    const g = groupsData.groups[groupsEditingIdx];
+    g.name = name;
+    g.key = key;
+    g.templ = groupsSelectedTemplate;
+    g.rolesEnabled = groupsSelectedTemplate !== 'general';
+    // Append new roster names if provided
+    if (roster.length > 0) {
+      if (!g.devices) g.devices = [];
+      roster.forEach(n => {
+        g.devices.push({ id: '', name: n, role: '' });
+      });
+    }
+    newIdx = groupsEditingIdx;
+  }
+  
+  groupsSave();
+  groupsSyncToDevice();
+  groupsRender();
+  groupsCloseModal();
+  
+  // Sync to device's stored groups
+  groupsSyncStoredGroup(newIdx);
+  
+  if (newIdx >= 0) {
+    groupsOpenDetail(newIdx);
+  }
+}
+
+// Sync a group to device's stored groups (ADDGROUP command)
+async function groupsSyncStoredGroup(idx) {
+  if (idx < 0 || idx >= groupsData.groups.length) return;
+  if (!setChar && !isWifiMode) return;
+  
+  const g = groupsData.groups[idx];
+  if (!g || !g.key || g.key.length !== 16) return;
+  
+  try {
+    // ADDGROUP:name:16charkey
+    await sendCmd('ADDGROUP:' + g.name + ':' + g.key);
+    log('Group synced to device: ' + g.name, 'info');
+  } catch (e) {
+    log('Failed to sync group: ' + e.message, 'err');
+  }
+}
+
+// Delete current group
+async function groupsDelete() {
+  if (groupsEditingIdx < 0) return;
+  const g = groupsData.groups[groupsEditingIdx];
+  if (!confirm('Delete group "' + g.name + '"?')) return;
+  
+  const idxToDelete = groupsEditingIdx;
+  
+  // If this was active, switch to personal
+  if (groupsData.activeGroupIdx === idxToDelete) {
+    groupsData.activeGroupIdx = -1;
+  } else if (groupsData.activeGroupIdx > idxToDelete) {
+    groupsData.activeGroupIdx--;
+  }
+  
+  // Remove from local array
+  groupsData.groups.splice(idxToDelete, 1);
+  groupsSave();
+  groupsRender();
+  openPanel('panel-groups');
+  
+  // Sync to device: clear all and re-add remaining
+  if (setChar || isWifiMode) {
+    try {
+      log('Clearing device groups...', 'info');
+      await sendCmd('CLEARGROUPS');
+      await new Promise(r => setTimeout(r, 100));
+      
+      // Re-add remaining groups
+      for (let i = 0; i < groupsData.groups.length; i++) {
+        const grp = groupsData.groups[i];
+        if (grp.key?.length === 16) {
+          log('Re-adding: ' + grp.name, 'info');
+          await sendCmd('ADDGROUP:' + grp.name + ':' + grp.key);
+          await new Promise(r => setTimeout(r, 100));
+        }
+      }
+      
+      // Re-activate current group if any
+      if (groupsData.activeGroupIdx >= 0) {
+        const active = groupsData.groups[groupsData.activeGroupIdx];
+        if (active?.key?.length === 16) {
+          log('Re-activating: ' + active.name, 'info');
+          await sendCmd('ADDGROUP:' + active.name + ':' + active.key);
+        }
+      }
+      
+      log('Group deleted from device', 'ok');
+    } catch (e) {
+      log('Failed to sync delete: ' + e.message, 'err');
+    }
+  }
+}
+
+// Key share
+function groupsKeyShare() {
+  document.getElementById('keyshare-modal').style.display = 'flex';
+  // Focus the Share Key button
+  setTimeout(() => {
+    const btn = document.querySelector('#keyshare-modal button:last-child');
+    if (btn) btn.focus();
+  }, 100);
+}
+
+function groupsCloseKeyshareModal() {
+  document.getElementById('keyshare-modal').style.display = 'none';
+}
+
+async function groupsConfirmKeyShare() {
+  groupsCloseKeyshareModal();
+  
+  if (!setChar && !isWifiMode) {
+    log('Not connected to device', 'err');
+    return;
+  }
+  
+  const g = groupsData.groups[groupsEditingIdx];
+  if (!g || !g.key || g.key.length !== 16) {
+    log('Invalid group key', 'err');
+    return;
+  }
+  
+  try {
+    // Send group name first (for inclusion in broadcast)
+    const groupName = (g.name || 'Group').substring(0, 31);
+    await sendCmd('SETGROUPNAME:' + groupName);
+    await new Promise(r => setTimeout(r, 50));
+    
+    // Send the key directly to device, then broadcast
+    // SETKEY:16charkey sets loraKey and saves to NVS
+    await sendCmd('SETKEY:' + g.key);
+    await new Promise(r => setTimeout(r, 100));
+    
+    // Now broadcast the key (includes group name)
+    await sendCmd('KEYSHARE');
+    log('Network key broadcast sent', 'warn');
+    showToast('Key shared to all devices in range', 'warn');
+  } catch (e) {
+    log('Key share failed: ' + e.message, 'err');
+    showToast('Key share failed — check connection', 'err');
+  }
+}
+
+// Cancel pending key share requests on all devices
+async function groupsCancelKeyShare() {
+  if (!setChar && !isWifiMode) {
+    log('Not connected to device', 'err');
+    return;
+  }
+  
+  try {
+    await sendCmd('KEYCANCEL');
+    log('Key share cancelled', 'info');
+    showToast('Cancelled pending requests', 'info');
+  } catch (e) {
+    log('Cancel failed: ' + e.message, 'err');
+  }
+}
+
+// Discover devices
+function groupsDiscover() {
+  groupsDiscoveredDevices = [];
+  document.getElementById('discover-list').innerHTML = '';
+  document.getElementById('discover-empty').style.display = 'block';
+  document.getElementById('discover-status').textContent = 'Waiting to send...';
+  document.getElementById('discover-assign-btn').disabled = true;
+  document.getElementById('discover-modal').style.display = 'flex';
+}
+
+function groupsCloseDiscoverModal() {
+  document.getElementById('discover-modal').style.display = 'none';
+}
+
+function groupsSendDiscover() {
+  if (!setChar && !isWifiMode) {
+    log('Not connected to device', 'err');
+    return;
+  }
+  
+  groupsDiscoveredDevices = [];
+  document.getElementById('discover-list').innerHTML = '';
+  document.getElementById('discover-empty').style.display = 'block';
+  document.getElementById('discover-status').textContent = 'Searching for devices...';
+  
+  sendCmd('REGDISCOVER');
+  
+  // Show searching state
+  setTimeout(() => {
+    if (groupsDiscoveredDevices.length === 0) {
+      document.getElementById('discover-status').textContent = 'No responses yet. Devices may need key share first.';
+    }
+  }, 3000);
+}
+
+// Handle registration response from device (called from BLE notify handler)
+function groupsHandleRegResponse(id, name) {
+  // Check if already in list
+  const existing = groupsDiscoveredDevices.find(d => d.id === id);
+  if (existing) return;
+  
+  // Get next name from roster if available
+  const g = groupsData.groups[groupsEditingIdx];
+  const roster = g?.devices?.filter(d => !d.id).map(d => d.name) || [];
+  const nextName = roster[groupsDiscoveredDevices.length] || '';
+  
+  groupsDiscoveredDevices.push({
+    id: id,
+    currentName: name,
+    newName: nextName,
+    assigned: false
+  });
+  
+  groupsRenderDiscoverList();
+  document.getElementById('discover-status').textContent = groupsDiscoveredDevices.length + ' device(s) found';
+}
+
+// Render discovered devices
+function groupsRenderDiscoverList() {
+  const container = document.getElementById('discover-list');
+  const empty = document.getElementById('discover-empty');
+  
+  if (groupsDiscoveredDevices.length === 0) {
+    container.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  
+  if (empty) empty.style.display = 'none';
+  
+  let html = '';
+  groupsDiscoveredDevices.forEach((d, i) => {
+    const statusClass = d.assigned ? 'color:var(--accent)' : 'color:var(--hint)';
+    const statusText = d.assigned ? '✓ Assigned' : 'Pending';
+    html += `
+      <div style="display:flex;align-items:center;padding:10px;background:var(--surface2);border-radius:8px;margin-bottom:6px;">
+        <div style="flex-shrink:0;margin-right:10px;">
+          <div style="font-size:10px;font-family:monospace;color:var(--muted);">${d.id}</div>
+          <div style="font-size:9px;color:var(--hint);">${escapeHtml(d.currentName)}</div>
+        </div>
+        <input type="text" value="${escapeHtml(d.newName)}" placeholder="Enter name..." 
+          onchange="groupsDiscoveredDevices[${i}].newName=this.value"
+          style="flex:1;padding:6px 8px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:var(--font);font-size:11px;margin-right:8px;">
+        <div style="font-size:10px;${statusClass};min-width:60px;text-align:right;">${statusText}</div>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+  
+  // Enable assign button if we have devices
+  document.getElementById('discover-assign-btn').disabled = groupsDiscoveredDevices.length === 0;
+}
+
+// Assign all names
+function groupsAssignAll() {
+  const toAssign = groupsDiscoveredDevices.filter(d => d.newName && !d.assigned);
+  if (toAssign.length === 0) {
+    log('No names to assign', 'warn');
+    return;
+  }
+  
+  let delay = 0;
+  toAssign.forEach(d => {
+    setTimeout(() => {
+      sendCmd('REGASSIGN:' + d.id + ':' + d.newName);
+    }, delay);
+    delay += 200; // stagger to avoid BLE congestion
+  });
+  
+  log('Assigning ' + toAssign.length + ' names...', 'info');
+}
+
+// Handle registration ACK from device
+function groupsHandleRegAck(id, name) {
+  // Mark as assigned in discover list
+  const d = groupsDiscoveredDevices.find(x => x.id === id);
+  if (d) {
+    d.assigned = true;
+    d.newName = name;
+    groupsRenderDiscoverList();
+  }
+  
+  // Add to group's device list if not already there
+  const g = groupsData.groups[groupsEditingIdx];
+  if (g) {
+    if (!g.devices) g.devices = [];
+    const existing = g.devices.find(x => x.id === id);
+    if (existing) {
+      existing.name = name;
+    } else {
+      // Check if there's a placeholder with this name
+      const placeholder = g.devices.find(x => !x.id && x.name === name);
+      if (placeholder) {
+        placeholder.id = id;
+      } else {
+        g.devices.push({ id: id, name: name, role: '' });
+      }
+    }
+    groupsSave();
+    groupsRenderDeviceList(g);
+    // Update subtitle
+    const subtitle = document.getElementById('group-detail-subtitle');
+    if (subtitle) subtitle.textContent = g.devices.length + ' devices';
+  }
+  
+  log('Assigned: ' + id + ' → ' + name, 'ok');
+  
+  // Check if all discovered devices are assigned, close modal if so
+  const unassigned = groupsDiscoveredDevices.filter(x => x.newName && !x.assigned);
+  if (unassigned.length === 0 && groupsDiscoveredDevices.some(x => x.assigned)) {
+    setTimeout(() => {
+      groupsCloseDiscoverModal();
+      log('All names assigned', 'ok');
+    }, 500);
+  }
+}
+
+// CSV upload
+function groupsUploadCSV() {
+  document.getElementById('group-csv-upload').click();
+}
+
+function groupsHandleCSV(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+    
+    // Skip header if it looks like one
+    let start = 0;
+    if (lines[0] && (lines[0].toLowerCase().includes('name') || lines[0].toLowerCase().includes('runner'))) {
+      start = 1;
+    }
+    
+    const names = [];
+    for (let i = start; i < lines.length; i++) {
+      // CSV: take first column (name), optionally second (role)
+      const parts = lines[i].split(',');
+      const name = parts[0]?.trim().replace(/^["']|["']$/g, '');
+      if (name) names.push(name);
+    }
+    
+    if (names.length > 0) {
+      document.getElementById('group-modal-roster').value = names.join('\n');
+      log('Imported ' + names.length + ' names from CSV', 'ok');
+    }
+  };
+  reader.readAsText(file);
+  input.value = ''; // reset for re-upload
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// KEY REQUEST HANDLING (recipient side)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Show key request modal
+function keyReqShow(leaderName) {
+  document.getElementById('keyreq-leader').textContent = leaderName;
+  document.getElementById('keyreq-modal').style.display = 'flex';
+  log('Network join request from ' + leaderName, 'info');
+}
+
+// Hide key request modal
+function keyReqHide() {
+  document.getElementById('keyreq-modal').style.display = 'none';
+}
+
+// Accept key request
+function keyReqAccept() {
+  sendCmd('KEYACCEPT');
+  keyReqHide();
+}
+
+// Decline key request
+function keyReqDecline() {
+  sendCmd('KEYDECLINE');
+  keyReqHide();
+}
+
+// Handle key ACK (leader side — track who accepted)
+let keyShareAccepts = []; // { id, name }
+
+function groupsHandleKeyAck(id, name) {
+  // Track accepts
+  const existing = keyShareAccepts.find(a => a.id === id);
+  if (existing) {
+    existing.name = name; // Update name if changed
+  } else {
+    keyShareAccepts.push({ id, name });
+  }
+  
+  // Find active group to update
+  let targetGroupIdx = groupsEditingIdx;
+  if (targetGroupIdx < 0 && groupsData.activeGroupIdx >= 0) {
+    targetGroupIdx = groupsData.activeGroupIdx;
+  }
+  
+  // Add/update device in group's device list
+  if (targetGroupIdx >= 0 && groupsData.groups[targetGroupIdx]) {
+    const g = groupsData.groups[targetGroupIdx];
+    if (!g.devices) g.devices = [];
+    
+    // Check if device already in list
+    const existingDevice = g.devices.find(d => d.id === id);
+    if (existingDevice) {
+      existingDevice.name = name; // update name
+    } else {
+      g.devices.push({ id: id, name: name, role: '' });
+    }
+    
+    groupsSave();
+    
+    // Update UI if group detail is open
+    if (groupsEditingIdx === targetGroupIdx) {
+      groupsRenderDeviceList(g);
+      // Update subtitle
+      const subtitle = document.getElementById('group-detail-subtitle');
+      if (subtitle) subtitle.textContent = g.devices.length + ' devices';
+    }
+  }
+}
+
+// Handle group leave notification (device left the group)
+function groupsHandleGroupLeave(id, name) {
+  // Find active group to update
+  let targetGroupIdx = groupsEditingIdx;
+  if (targetGroupIdx < 0 && groupsData.activeGroupIdx >= 0) {
+    targetGroupIdx = groupsData.activeGroupIdx;
+  }
+  
+  // Remove device from group's device list
+  if (targetGroupIdx >= 0 && groupsData.groups[targetGroupIdx]) {
+    const g = groupsData.groups[targetGroupIdx];
+    if (g.devices) {
+      const idx = g.devices.findIndex(d => d.id === id);
+      if (idx >= 0) {
+        g.devices.splice(idx, 1);
+        groupsSave();
+        
+        // Update UI if group detail is open
+        if (groupsEditingIdx === targetGroupIdx) {
+          groupsRenderDeviceList(g);
+          // Update subtitle
+          const subtitle = document.getElementById('group-detail-subtitle');
+          if (subtitle) subtitle.textContent = g.devices.length + ' devices';
+        }
+        
+        log(`Removed ${name || id} from group`, 'info');
+      }
+    }
+  }
+  
+  // Also remove from loraPeers if present
+  if (loraPeers[id]) {
+    delete loraPeers[id];
+    updatePeerPanel();
+  }
+}
+
+// Resync groups from device (called when device notifies groups changed)
+async function groupsResyncFromDevice() {
+  if (!setChar) return;
+  try {
+    const groupsPromise = new Promise((resolve) => {
+      const timeout = setTimeout(() => resolve(null), 500);
+      const handler = (event) => {
+        try {
+          const val = new TextDecoder().decode(event.target.value);
+          const data = extractJSON(val);
+          if (data && data.groups !== undefined) {
+            clearTimeout(timeout);
+            setChar.removeEventListener('characteristicvaluechanged', handler);
+            resolve(data);
+          }
+        } catch(e) {}
+      };
+      setChar.addEventListener('characteristicvaluechanged', handler);
+    });
+    await setChar.writeValueWithResponse(new TextEncoder().encode("GETGROUPS")).catch(()=>{});
+    const gr = await groupsPromise;
+    if (gr && gr.groups !== undefined) {
+      // Clear existing groups and rebuild from device
+      groupsData.groups = gr.groups.map(g => ({
+        id: 'grp_' + Date.now().toString(36) + Math.random().toString(36).substr(2,4),
+        name: g.name,
+        key: '',
+        leader: g.leader || '',
+        templ: 'general',
+        rolesEnabled: false,
+        devices: []
+      }));
+      groupsData.activeGroupIdx = gr.groups.findIndex(g => g.active);
+      groupsSave();
+      groupsRender();
+      // Close detail panel if open (group may have been deleted)
+      if (groupsEditingIdx >= 0) {
+        groupsCloseDetail();
+      }
+      log('Groups resynced from device: ' + gr.groups.length, 'info');
+    }
+  } catch(e) {
+    log('Groups resync failed: ' + e.message, 'warn');
+  }
+}
+
+// Escape HTML helper
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Init groups on load
+document.addEventListener('DOMContentLoaded', groupsLoad);
 
 // ── PWA Service Worker ───────────────────────────────────────────────────
 if ("serviceWorker" in navigator) {
