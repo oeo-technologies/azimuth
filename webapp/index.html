@@ -426,7 +426,7 @@ body.wifi-mode.wifi-light .fix-badge.active #fix-text { color: #1a7f37 !importan
 </div>
 
 <header>
-  <a href="index.html" title="Back to oeo.dev" style="display:flex;align-items:center;gap:5px;text-decoration:none;color:var(--muted);font-size:11px;font-weight:500;letter-spacing:.04em;flex-shrink:0;padding:6px 8px 6px 2px;border-right:1px solid var(--border);margin-right:2px;white-space:nowrap;transition:color .15s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">
+  <a id="oeo-home-link" href="https://oeo.dev" title="Back to oeo.dev" style="display:flex;align-items:center;gap:5px;text-decoration:none;color:var(--muted);font-size:11px;font-weight:500;letter-spacing:.04em;flex-shrink:0;padding:6px 8px 6px 2px;border-right:1px solid var(--border);margin-right:2px;white-space:nowrap;transition:color .15s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">
     <svg width="14" height="14" viewBox="0 0 72 72" fill="none" style="flex-shrink:0;opacity:.7;">
       <circle cx="36" cy="36" r="30" stroke="currentColor" stroke-width="5"/>
       <circle cx="36" cy="36" r="18" stroke="currentColor" stroke-width="3" stroke-dasharray="2.5 4" opacity=".5"/>
@@ -3246,6 +3246,18 @@ function wxUpdateCard(wx) {
 }
 const isWifiMode = window.location.hostname === '192.168.4.1'
                 || window.location.hostname === 'azimuth.local';
+
+// Disable OEO home link in WiFi mode (device has no internet)
+if (isWifiMode) {
+  const oeoLink = document.getElementById('oeo-home-link');
+  if (oeoLink) {
+    oeoLink.removeAttribute('href');
+    oeoLink.style.cursor = 'default';
+    oeoLink.style.pointerEvents = 'none';
+    oeoLink.title = 'OEO Technologies';
+  }
+}
+
 let wifiPollInterval = null;
 let wifiMsgSeenTs = 0;
 
@@ -3863,10 +3875,11 @@ function wxStopInterval() {
 
 
 // ── Map tile switcher ────────────────────────────────────────────────────
+const OFFLINE_MAX_ZOOM = 14;  // Cached tiles only go to zoom 14
 const tileSets = [
-  { name: 'Standard', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',                    attr: '© OpenStreetMap contributors', maxNativeZoom: 14 },
-  { name: 'Outdoors', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attr: '© OpenStreetMap © CARTO', maxNativeZoom: 19 },
-  { name: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',    attr: '© OpenStreetMap © CARTO', maxNativeZoom: 19 },
+  { name: 'Standard', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',                    attr: '© OpenStreetMap contributors', maxNativeZoom: 19, offlineMaxZoom: OFFLINE_MAX_ZOOM },
+  { name: 'Outdoors', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attr: '© OpenStreetMap © CARTO', maxNativeZoom: 19, offlineMaxZoom: OFFLINE_MAX_ZOOM },
+  { name: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',    attr: '© OpenStreetMap © CARTO', maxNativeZoom: 19, offlineMaxZoom: OFFLINE_MAX_ZOOM },
 ];
 let currentTileIdx = 0;
 let currentTileLayer = null;
@@ -3875,7 +3888,8 @@ function cycleTileLayer() {
   currentTileIdx = (currentTileIdx + 1) % tileSets.length;
   const ts = tileSets[currentTileIdx];
   if (currentTileLayer) map.removeLayer(currentTileLayer);
-  currentTileLayer = L.tileLayer(ts.url, { maxZoom: 20, maxNativeZoom: ts.maxNativeZoom||19, attribution: ts.attr }).addTo(map);
+  const maxNative = isWifiMode ? ts.offlineMaxZoom : ts.maxNativeZoom;
+  currentTileLayer = L.tileLayer(ts.url, { maxZoom: 20, maxNativeZoom: maxNative, attribution: ts.attr }).addTo(map);
   setEl('map-type-label', 'text', ts.name);
   // Flash label briefly
   const lbl = document.getElementById('map-type-label');
@@ -4160,7 +4174,8 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 });
 // CartoDB Voyager (Outdoors) — no Referer required, works from any origin
-currentTileLayer = L.tileLayer(tileSets[0].url, { maxZoom:20, maxNativeZoom: tileSets[0].maxNativeZoom||19, attribution: tileSets[0].attr }).addTo(map);
+const initMaxNative = isWifiMode ? tileSets[0].offlineMaxZoom : tileSets[0].maxNativeZoom;
+currentTileLayer = L.tileLayer(tileSets[0].url, { maxZoom:20, maxNativeZoom: initMaxNative, attribution: tileSets[0].attr }).addTo(map);
 
 // Marker — rebuilt with device name label once connected
 function buildMarkerIcon(label, approx) {
@@ -6449,7 +6464,8 @@ function applyTheme(t) {
     currentTileIdx = preferredIdx;
     if (currentTileLayer) map.removeLayer(currentTileLayer);
     const ts = tileSets[currentTileIdx];
-    currentTileLayer = L.tileLayer(ts.url, { maxZoom: 20, maxNativeZoom: ts.maxNativeZoom||19, attribution: ts.attr }).addTo(map);
+    const maxNative = isWifiMode ? ts.offlineMaxZoom : ts.maxNativeZoom;
+    currentTileLayer = L.tileLayer(ts.url, { maxZoom: 20, maxNativeZoom: maxNative, attribution: ts.attr }).addTo(map);
     setEl('map-type-label', 'text', ts.name);
   }
 
