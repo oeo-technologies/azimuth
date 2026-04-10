@@ -1,9 +1,9 @@
 /*
  * Azimuth GPS Tracker Firmware — OEO Technologies
  * =====================================================================
- * Version : v3.16
+ * Version : v3.17
  * Changes :
- *   v3.16 — Mesh status, config portal, lockdown mode, WiFi QR code
+ *   v3.17 — Mesh status, config portal, lockdown mode, WiFi QR code
  *          New /status endpoint: self-contained HTML status page showing
  *          device info, battery, GPS, uptime, LoRa status, peer table with
  *          name, distance, last seen, RSSI/SNR signal bars, battery.
@@ -1349,6 +1349,17 @@ static const uint8_t PROGMEM ICON_TIMER[] = {
 static const uint8_t PROGMEM ICON_TIME[] = {
   0b00111100,0b01000010,0b10010101,0b10110001,
   0b10000001,0b01000010,0b00111100,0b00000000
+};
+// Group icon (3 people)
+static const uint8_t PROGMEM ICON_GROUP[] = {
+  0b00010000,  //    #
+  0b00111000,  //   ###
+  0b00010000,  //    #
+  0b01010100,  //  # # #
+  0b11111110,  // #######
+  0b01010100,  //  # # #
+  0b01010100,  //  # # #
+  0b00000000
 };
 
 // ============================================================
@@ -5111,7 +5122,7 @@ void drawTitleFinal() {
   
   display.setTextSize(1);
   display.setCursor(versionX, textY + 18);
-  display.print("OEO v3.15");
+  display.print("OEO v3.17");
   
   display.display();
 }
@@ -5190,7 +5201,7 @@ void showSplashTitle() {
     if (currentY >= 10) {
       display.setTextSize(1);
       display.setCursor(versionX, currentY + 18);
-      display.print("OEO v3.15");
+      display.print("OEO v3.17");
     }
     
     display.display();
@@ -5464,7 +5475,7 @@ void drawPageGPS() {
 }
 
 // ── Hidden About screen — triggered by long press on Device Information ──────
-#define FW_VERSION  "v3.16"
+#define FW_VERSION  "v3.17"
 #define FW_BUILD    "Apr 2026"
 #define OEO_WEB     "oeo.dev/azimuth"
 #define OEO_COPY    "2026 OEO"
@@ -5795,7 +5806,8 @@ void drawPageGroups() {
   }
   
   // State 4: Group list (with Personal at top)
-  display.setCursor(0, 0);
+  display.drawBitmap(2, 1, ICON_GROUP, 8, 8, SSD1306_WHITE);
+  display.setCursor(13, 1);
   display.println("Groups");
   display.drawLine(0, 10, 128, 10, SSD1306_WHITE);
   
@@ -6395,242 +6407,44 @@ void drawPageWifi() {
   }
 }
 
-// ── QR Code Generator (embedded, no external library) ─────────────────────────
-// Minimal QR code generator for WiFi credentials display
-// Based on Project Nayuki's QR code generator, simplified for embedded use
-
-#define QR_SIZE 29  // Version 3 QR code is 29x29 modules
-
-static uint8_t qrModules[QR_SIZE][QR_SIZE];
-static uint8_t qrFuncMask[QR_SIZE][QR_SIZE];
-
-static void qrSetModule(int x, int y, bool dark, bool isFunc) {
-  if (x >= 0 && x < QR_SIZE && y >= 0 && y < QR_SIZE) {
-    qrModules[y][x] = dark ? 1 : 0;
-    if (isFunc) qrFuncMask[y][x] = 1;
-  }
-}
-
-static void qrDrawFinderPattern(int cx, int cy) {
-  for (int dy = -4; dy <= 4; dy++) {
-    for (int dx = -4; dx <= 4; dx++) {
-      int dist = max(abs(dx), abs(dy));
-      if (dist <= 3) {
-        bool dark = (dist != 2) && (dist != 4);
-        qrSetModule(cx + dx, cy + dy, dark, true);
-      }
-    }
-  }
-}
-
-static void qrDrawAlignmentPattern(int cx, int cy) {
-  for (int dy = -2; dy <= 2; dy++) {
-    for (int dx = -2; dx <= 2; dx++) {
-      bool dark = (abs(dx) == 2 || abs(dy) == 2 || (dx == 0 && dy == 0));
-      qrSetModule(cx + dx, cy + dy, dark, true);
-    }
-  }
-}
-
-static void qrDrawFormatBits(uint32_t bits) {
-  // Format info around finders
-  for (int i = 0; i < 6; i++) qrSetModule(8, i, (bits >> i) & 1, true);
-  qrSetModule(8, 7, (bits >> 6) & 1, true);
-  qrSetModule(8, 8, (bits >> 7) & 1, true);
-  qrSetModule(7, 8, (bits >> 8) & 1, true);
-  for (int i = 9; i < 15; i++) qrSetModule(14 - i, 8, (bits >> i) & 1, true);
-  
-  for (int i = 0; i < 8; i++) qrSetModule(QR_SIZE - 1 - i, 8, (bits >> i) & 1, true);
-  for (int i = 8; i < 15; i++) qrSetModule(8, QR_SIZE - 15 + i, (bits >> i) & 1, true);
-  qrSetModule(8, QR_SIZE - 8, 1, true);  // Always dark
-}
-
-static void qrDrawFunctionPatterns() {
-  memset(qrModules, 0, sizeof(qrModules));
-  memset(qrFuncMask, 0, sizeof(qrFuncMask));
-  
-  // Finder patterns
-  qrDrawFinderPattern(3, 3);
-  qrDrawFinderPattern(QR_SIZE - 4, 3);
-  qrDrawFinderPattern(3, QR_SIZE - 4);
-  
-  // Alignment pattern (version 3 has one at 22,22)
-  qrDrawAlignmentPattern(22, 22);
-  
-  // Timing patterns
-  for (int i = 0; i < QR_SIZE; i++) {
-    qrSetModule(6, i, (i % 2) == 0, true);
-    qrSetModule(i, 6, (i % 2) == 0, true);
-  }
-  
-  // Format bits placeholder (mask 0, ECC L = 0x77C4)
-  qrDrawFormatBits(0x77C4);
-}
-
-static uint8_t qrDataBits[128];
-static int qrDataLen = 0;
-
-static void qrAddBits(uint32_t val, int len) {
-  for (int i = len - 1; i >= 0; i--) {
-    int byteIdx = qrDataLen / 8;
-    int bitIdx = 7 - (qrDataLen % 8);
-    if (byteIdx < 128) {
-      if ((val >> i) & 1) qrDataBits[byteIdx] |= (1 << bitIdx);
-    }
-    qrDataLen++;
-  }
-}
-
-static void qrEncodeData(const char* text) {
-  memset(qrDataBits, 0, sizeof(qrDataBits));
-  qrDataLen = 0;
-  
-  int len = strlen(text);
-  // Byte mode indicator
-  qrAddBits(0b0100, 4);
-  // Character count (8 bits for version 3 byte mode)
-  qrAddBits(len, 8);
-  // Data
-  for (int i = 0; i < len; i++) {
-    qrAddBits((uint8_t)text[i], 8);
-  }
-  // Terminator
-  qrAddBits(0, min(4, 440 - qrDataLen));  // Version 3-L has 440 data bits
-  // Pad to byte boundary
-  while (qrDataLen % 8 != 0) qrAddBits(0, 1);
-  // Pad codewords
-  uint8_t padBytes[] = {0xEC, 0x11};
-  int padIdx = 0;
-  while (qrDataLen < 440) {
-    qrAddBits(padBytes[padIdx], 8);
-    padIdx = 1 - padIdx;
-  }
-}
-
-// Reed-Solomon error correction (simplified for Version 3-L: 15 EC codewords)
-static uint8_t qrGfMul(uint8_t a, uint8_t b) {
-  if (a == 0 || b == 0) return 0;
-  // GF(256) multiplication using log/exp tables
-  static const uint8_t exp[512] = {
-    1,2,4,8,16,32,64,128,29,58,116,232,205,135,19,38,76,152,45,90,180,117,234,201,143,3,6,12,24,48,96,192,
-    157,39,78,156,37,74,148,53,106,212,181,119,238,193,159,35,70,140,5,10,20,40,80,160,93,186,105,210,185,111,
-    222,161,95,190,97,194,153,47,94,188,101,202,137,15,30,60,120,240,253,231,211,187,107,214,177,127,254,225,
-    223,163,91,182,113,226,217,175,67,134,17,34,68,136,13,26,52,104,208,189,103,206,129,31,62,124,248,237,199,
-    147,59,118,236,197,151,51,102,204,133,23,46,92,184,109,218,169,79,158,33,66,132,21,42,84,168,77,154,41,82,
-    164,85,170,73,146,57,114,228,213,183,115,230,209,191,99,198,145,63,126,252,229,215,179,123,246,241,255,227,
-    219,171,75,150,49,98,196,149,55,110,220,165,87,174,65,130,25,50,100,200,141,7,14,28,56,112,224,221,167,83,
-    166,81,162,89,178,121,242,249,239,195,155,43,86,172,69,138,9,18,36,72,144,61,122,244,245,247,243,251,235,
-    203,139,11,22,44,88,176,125,250,233,207,131,27,54,108,216,173,71,142,1
-  };
-  static const uint8_t log[256] = {
-    0,0,1,25,2,50,26,198,3,223,51,238,27,104,199,75,4,100,224,14,52,141,239,129,28,193,105,248,200,8,76,113,
-    5,138,101,47,225,36,15,33,53,147,142,218,240,18,130,69,29,181,194,125,106,39,249,185,201,154,9,120,77,228,
-    114,166,6,191,139,98,102,221,48,253,226,152,37,179,16,145,34,136,54,208,148,206,143,150,219,189,241,210,19,
-    92,131,56,70,64,30,66,182,163,195,72,126,110,107,58,40,84,250,133,186,61,202,94,155,159,10,21,121,43,78,212,
-    229,172,115,243,167,87,7,112,192,247,140,128,99,13,103,74,222,237,49,197,254,24,227,165,153,119,38,184,180,
-    124,17,68,146,217,35,32,137,46,55,63,209,91,149,188,207,205,144,135,151,178,220,252,190,97,242,86,211,171,
-    20,42,93,158,132,60,57,83,71,109,65,162,31,45,67,216,183,123,164,118,196,23,73,236,127,12,111,246,108,161,
-    59,82,41,157,85,170,251,96,134,177,187,204,62,90,203,89,95,176,156,169,160,81,11,245,22,235,122,117,44,215,
-    79,174,213,233,230,231,173,232,116,214,244,234,168,80,88,175
-  };
-  return exp[log[a] + log[b]];
-}
-
-static void qrAddECC() {
-  // Version 3-L: 55 data codewords, 15 EC codewords, 1 block
-  uint8_t data[55];
-  for (int i = 0; i < 55; i++) data[i] = qrDataBits[i];
-  
-  // Generator polynomial for 15 EC codewords (precomputed)
-  static const uint8_t gen[15] = {8,183,61,91,202,37,51,58,58,237,140,124,5,99,105};
-  
-  uint8_t ecc[15] = {0};
-  for (int i = 0; i < 55; i++) {
-    uint8_t factor = data[i] ^ ecc[0];
-    memmove(ecc, ecc + 1, 14);
-    ecc[14] = 0;
-    for (int j = 0; j < 15; j++) {
-      ecc[j] ^= qrGfMul(gen[j], factor);
-    }
-  }
-  
-  // Append ECC to data
-  for (int i = 0; i < 15; i++) qrDataBits[55 + i] = ecc[i];
-}
-
-static void qrPlaceData() {
-  int bitIdx = 0;
-  int totalBits = 70 * 8;  // 55 data + 15 ECC = 70 codewords
-  
-  // Place bits in zigzag pattern
-  for (int right = QR_SIZE - 1; right >= 1; right -= 2) {
-    if (right == 6) right = 5;  // Skip timing column
-    for (int vert = 0; vert < QR_SIZE; vert++) {
-      for (int j = 0; j < 2; j++) {
-        int x = right - j;
-        bool upward = ((right + 1) / 2) % 2 == 0;
-        int y = upward ? (QR_SIZE - 1 - vert) : vert;
-        if (!qrFuncMask[y][x] && bitIdx < totalBits) {
-          int byteIdx = bitIdx / 8;
-          int bitPos = 7 - (bitIdx % 8);
-          bool dark = (qrDataBits[byteIdx] >> bitPos) & 1;
-          // Apply mask pattern 0: (x + y) % 2 == 0
-          if ((x + y) % 2 == 0) dark = !dark;
-          qrModules[y][x] = dark ? 1 : 0;
-          bitIdx++;
-        }
-      }
-    }
-  }
-}
-
-static void qrGenerate(const char* text) {
-  qrDrawFunctionPatterns();
-  qrEncodeData(text);
-  qrAddECC();
-  qrPlaceData();
-}
-
-// Shows WiFi QR code that phones can scan to auto-join the device AP
+// ── QR Code placeholder (feature disabled pending library fix) ───────────────
+// Shows WiFi credentials as text instead of QR code
 void drawQRCode() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   
-  // Build WiFi credential string: WIFI:T:WPA;S:ssid;P:password;;
-  char wifiStr[80];
-  snprintf(wifiStr, sizeof(wifiStr), "WIFI:T:WPA;S:%s;P:%s;;", apSSID, apPass);
+  // Header
+  display.setCursor(30, 2);
+  display.print("WiFi Hotspot");
+  display.drawLine(0, 12, 127, 12, SSD1306_WHITE);
   
-  // Generate QR code
-  qrGenerate(wifiStr);
+  // SSID
+  display.setCursor(4, 18);
+  display.print("SSID:");
+  display.setCursor(4, 28);
+  display.print(apSSID);
   
-  // Draw QR code — 2px per module = 58x58, centered
-  const int scale = 2;
-  const int qrX = (128 - QR_SIZE * scale) / 2;
-  const int qrY = 2;
+  // Password
+  display.setCursor(4, 42);
+  display.print("Pass: ");
+  display.print(apPass);
   
-  for (int y = 0; y < QR_SIZE; y++) {
-    for (int x = 0; x < QR_SIZE; x++) {
-      if (qrModules[y][x]) {
-        display.fillRect(qrX + x * scale, qrY + y * scale, scale, scale, SSD1306_WHITE);
-      }
-    }
-  }
-  
-  // Hint text at bottom
-  display.setCursor(20, 56);
-  display.print("Scan to connect");
+  // Hint
+  display.setCursor(14, 56);
+  display.print("Press to dismiss");
   
   display.display();
 }
 
 
 void drawPageSettings() {
+  display.clearDisplay();  // Always clear to prevent artifacts
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  
   // Show brief saved confirmation
   if (settingsSaved) {
-    display.clearDisplay();  // ensure clean slate
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
     display.drawBitmap(2, 1, ICON_COG, 8, 8, SSD1306_WHITE);
     display.setCursor(13, 1); display.println("Settings");
     display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
@@ -6699,10 +6513,15 @@ void drawPageSettings() {
     int y = 13 + (i - startRow) * 12;
     bool active = (i == settingsRow);
 
+    // Clear this row's background first
+    display.fillRect(0, y-1, 128, 10, SSD1306_BLACK);
+
     if (active && settingsSel) {
       // Invert active row while editing
-      display.fillRect(0, y-1, 127, 10, SSD1306_WHITE);
+      display.fillRect(0, y-1, 128, 10, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
+    } else {
+      display.setTextColor(SSD1306_WHITE);
     }
 
     // Label
@@ -6714,36 +6533,31 @@ void drawPageSettings() {
     display.setCursor(127 - vw, y);
     display.print(vals[i]);
 
-    display.setTextColor(SSD1306_WHITE);
-
     // Row cursor indicator — small filled rect on left edge
     if (active) {
       if (settingsSel) {
         // Left arrow while editing (inverted so draws black on white)
         display.setTextColor(SSD1306_BLACK);
         display.setCursor(2, y); display.print("*");
-        display.setTextColor(SSD1306_WHITE);
       } else {
         display.fillRect(0, y, 3, 7, SSD1306_WHITE);
       }
     }
+    
+    display.setTextColor(SSD1306_WHITE);
   }
   
   // Scroll indicators
   if (settingsPage == 0 && TOTAL_ROWS > ROWS_PER_PAGE) {
     // Down arrow at bottom right to show more items below
-    int ax = 120, ay = 57;
+    int ax = 122, ay = 57;
     display.drawLine(ax, ay, ax-4, ay-4, SSD1306_WHITE);
     display.drawLine(ax, ay, ax+4, ay-4, SSD1306_WHITE);
-    display.drawLine(ax, ay-1, ax-3, ay-4, SSD1306_WHITE);
-    display.drawLine(ax, ay-1, ax+3, ay-4, SSD1306_WHITE);
   } else if (settingsPage > 0) {
-    // Up arrow at top right to show items above
-    int ax = 120, ay = 14;
-    display.drawLine(ax, ay, ax-4, ay+4, SSD1306_WHITE);
-    display.drawLine(ax, ay, ax+4, ay+4, SSD1306_WHITE);
-    display.drawLine(ax, ay+1, ax-3, ay+4, SSD1306_WHITE);
-    display.drawLine(ax, ay+1, ax+3, ay+4, SSD1306_WHITE);
+    // Up arrow at top right corner (above header line)
+    int ax = 122, ay = 5;
+    display.drawLine(ax, ay, ax-3, ay+3, SSD1306_WHITE);
+    display.drawLine(ax, ay, ax+3, ay+3, SSD1306_WHITE);
   }
 }
 
@@ -7430,7 +7244,7 @@ void simulateGPS() {
 void setup() {
   Serial.begin(115200);
   delay(300);
-  Serial.println("[BOOT] Azimuth v3.15");
+  Serial.println("[BOOT] Azimuth v3.17");
   Serial.printf("[BOOT] Device: %s\n", bleDeviceName);
 
   pinMode(VEXT_CTRL_PIN,  OUTPUT); digitalWrite(VEXT_CTRL_PIN,  LOW);
