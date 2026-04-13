@@ -297,6 +297,81 @@ body.wifi-mode.wifi-light .fix-badge.active #fix-text { color: #1a7f37 !importan
 .set-opt:hover  { border-color: var(--accent); color: var(--accent); }
 .set-opt.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
 
+/* ── Route panel styles ── */
+.route-item {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.route-item.swiping { transition: none; }
+.route-item.deleting { transform: translateX(-100%); opacity: 0; }
+.route-item-content { position: relative; z-index: 1; background: var(--surface2); padding: 12px; margin: -12px; border-radius: 8px; cursor: pointer; }
+.route-item-content:hover { background: var(--surface); }
+/* Route marker tooltip on map */
+.route-marker-tooltip { background: var(--surface); border: 1px solid var(--border); color: var(--text); font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+.route-marker-tooltip::before { border-top-color: var(--border) !important; }
+.route-item-delete {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 70px;
+  background: var(--danger, #A32D2D);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.route-chart-tab {
+  flex: 1;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.route-chart-tab.active {
+  background: var(--surface);
+  color: var(--text);
+}
+.route-xaxis-opt {
+  cursor: pointer;
+  color: var(--hint);
+  transition: color 0.15s;
+}
+.route-xaxis-opt.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+.route-stat-card {
+  text-align: center;
+  background: var(--surface2);
+  padding: 8px 4px;
+  border-radius: 6px;
+}
+.route-stat-card .val {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.route-stat-card .lbl {
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
 /* ── Stat unit labels ── */
 .stat-unit { font-size: 9px; font-weight: 400; color: var(--muted); margin-left: 1px; }
 
@@ -338,6 +413,7 @@ body.wifi-mode.wifi-light .fix-badge.active #fix-text { color: #1a7f37 !importan
 .toast-label { font-size: 13px; font-weight: 600; color: var(--accent); }
 @keyframes tickPop { 0%{transform:scale(.5);opacity:0} 70%{transform:scale(1.15);opacity:1} 100%{transform:scale(1)} }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
 
 /* ── No BLE notice ── */
 #no-ble-notice {
@@ -357,6 +433,13 @@ body.wifi-mode.wifi-light .fix-badge.active #fix-text { color: #1a7f37 !importan
 .fix-badge.active #fix-ray1, .fix-badge.active #fix-ray2, .fix-badge.active #fix-ray3,
 .fix-badge.active #fix-ray4, .fix-badge.active #fix-ray5, .fix-badge.active #fix-ray6,
 .fix-badge.active #fix-ray7, .fix-badge.active #fix-ray8 { stroke: var(--accent); }
+/* Approx location amber variant */
+.fix-badge.approx { border-color: #d29922; background: #d2992233; color: #d29922; }
+.fix-badge.approx svg circle, .fix-badge.approx svg path { stroke: #a67c14; }
+.fix-badge.approx #fix-dot-svg { fill: #a67c14; }
+.fix-badge.approx #fix-ray1, .fix-badge.approx #fix-ray2, .fix-badge.approx #fix-ray3,
+.fix-badge.approx #fix-ray4, .fix-badge.approx #fix-ray5, .fix-badge.approx #fix-ray6,
+.fix-badge.approx #fix-ray7, .fix-badge.approx #fix-ray8 { stroke: #a67c14; }
 
 /* ── Stats overlay states ── */
 #stats-overlay { transition: opacity .3s; }
@@ -777,7 +860,7 @@ body.wifi-mode.wifi-light .fix-badge.active #fix-text { color: #1a7f37 !importan
     <!-- Elevation profile (shown when route has elevation data) -->
     <div id="elev-panel" style="display:none;background:var(--surface);border-top:1px solid var(--border);padding:6px 14px 8px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-        <span style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--hint);">Elevation Profile</span>
+        <span id="elev-title" style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--hint);">Elevation Profile</span>
         <span id="elev-stats" style="font-size:10px;color:var(--muted);"></span>
       </div>
       <canvas id="elev-chart" style="width:100%;display:block;" height="80"></canvas>
@@ -1151,6 +1234,7 @@ body.wifi-mode {
 .az-pill-queued { font-size: 10px; color: var(--warn); background: var(--warn-bg); padding: 2px 8px; border-radius: 10px; font-weight: 600; }
 /* Overlay backdrop */
 #az-overlay { display: none; position: fixed; top: 52px; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 8000; }
+#az-overlay.route-detail-mode { background: transparent; pointer-events: none; }
 </style>
 
 <!-- Overlay backdrop -->
@@ -1164,6 +1248,35 @@ body.wifi-mode {
     <div class="az-panel-title">Menu</div>
   </div>
   <div class="az-panel-body">
+    <!-- WiFi-only menu items: Status and Config -->
+    <div class="az-menu-item wifi-only-item" id="menu-item-status" style="display:none;" onclick="window.location.href='/status'">
+      <div class="az-menu-icon" style="background:#E6F1FB;">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <circle cx="9" cy="9" r="6" stroke="#185FA5" stroke-width="1.4"/>
+          <path d="M9 6v4M9 12v.5" stroke="#185FA5" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="az-menu-info">
+        <div class="az-menu-name">Status</div>
+        <div class="az-menu-desc">Device & mesh status</div>
+      </div>
+      <span class="az-menu-arrow">›</span>
+    </div>
+
+    <div class="az-menu-item wifi-only-item" id="menu-item-config" style="display:none;" onclick="window.location.href='/config'">
+      <div class="az-menu-icon" style="background:#F1EFE8;">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <circle cx="9" cy="9" r="2.5" stroke="#5F5E5A" stroke-width="1.4"/>
+          <path d="M9 1v2.5M9 14.5V17M1 9h2.5M14.5 9H17M3.2 3.2l1.8 1.8M13 13l1.8 1.8M3.2 14.8l1.8-1.8M13 5l1.8-1.8" stroke="#5F5E5A" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="az-menu-info">
+        <div class="az-menu-name">Config</div>
+        <div class="az-menu-desc">Device configuration</div>
+      </div>
+      <span class="az-menu-arrow">›</span>
+    </div>
+
     <div class="az-section-label" id="menu-section-nav">Navigation & Group</div>
 
     <div class="az-menu-item" onclick="openPanel('panel-peers')" id="menu-item-peers">
@@ -1246,6 +1359,11 @@ body.wifi-mode {
       <div class="az-menu-info">
         <div class="az-menu-name" id="menu-routes-name">Saved routes</div>
         <div class="az-menu-desc" id="menu-routes-desc">No routes on device</div>
+        <!-- Importing indicator shown during BLE import -->
+        <div id="menu-routes-importing" style="display:none;margin-top:4px;display:flex;align-items:center;gap:6px;">
+          <div style="width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;"></div>
+          <span style="font-size:10px;color:var(--accent);" id="menu-routes-importing-text">Importing...</span>
+        </div>
       </div>
       <span class="az-badge" id="menu-routes-badge" style="display:none;"></span>
       <span class="az-menu-arrow">›</span>
@@ -1726,31 +1844,97 @@ body.wifi-mode {
 <!-- ── ROUTES PANEL ─────────────────────────────────────────────────────── -->
 <div id="panel-routes" class="az-panel">
   <div class="az-panel-hdr">
-    <button class="az-back-btn" onclick="openPanel('panel-main')">‹</button>
-    <div class="az-panel-title">Saved routes</div>
+    <button class="az-back-btn" onclick="routesBack()">‹</button>
+    <div class="az-panel-title" id="routes-panel-title">Saved routes</div>
   </div>
-  <div class="az-panel-body" style="padding:0;">
-    <div id="route-export-section" style="display:none;padding:14px 16px;border-bottom:1px solid var(--border);">
-      <div id="route-export-status" style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5;"></div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <button onclick="exportRoute()" id="export-route-btn" class="az-action-btn accent" style="justify-content:space-between;">
-          <span style="display:flex;align-items:center;gap:10px;">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;"><path d="M8 2v8M5 7l3 3 3-3M3 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Import routes from device
-          </span>
-          <span id="route-count-badge" style="display:none;background:var(--accent);color:#fff;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;"></span>
-        </button>
-        <button onclick="clearRecordedRoute()" class="az-action-btn danger" style="justify-content:flex-start;">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;"><path d="M3 4h10M6 4V3h4v1M5.5 4l.5 9h4l.5-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Clear imported routes
-        </button>
+  <div class="az-panel-body" style="padding:0;display:flex;flex-direction:column;height:100%;">
+    <!-- Route list view -->
+    <div id="routes-list-view" style="flex:1;overflow-y:auto;">
+      <!-- Loading indicator -->
+      <div id="routes-loading" style="display:none;padding:32px 16px;text-align:center;">
+        <div style="display:inline-block;width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px;"></div>
+        <div style="color:var(--muted);font-size:13px;" id="routes-loading-text">Importing routes...</div>
+      </div>
+      <div id="routes-list" style="padding:8px;"></div>
+      <div id="routes-empty" style="display:none;padding:32px 16px;text-align:center;color:var(--hint);font-size:13px;">
+        No routes saved on device.<br><br>
+        <span style="font-size:11px;">Start recording on the device, then stop to save a route.</span>
       </div>
     </div>
-    <div id="route-no-routes-section" style="display:none;padding:16px;font-size:12px;color:var(--hint);line-height:1.6;">
-      No routes stored on device. Start recording on the device, then long-press the track button to save.
+    
+    <!-- Route detail view (hidden by default) -->
+    <div id="routes-detail-view" style="display:none;flex:1;overflow-y:auto;padding:12px;">
+      <!-- Editable name with edit icon -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <div id="route-name-display" style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="routeStartEditName()">
+          <span id="route-detail-name-text" style="font-size:16px;font-weight:600;color:var(--text);"></span>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="color:var(--muted);flex-shrink:0;">
+            <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div id="route-name-edit" style="display:none;flex:1;display:flex;align-items:center;gap:8px;">
+          <input type="text" id="route-detail-name" style="flex:1;min-width:0;font-size:14px;font-weight:600;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);" />
+          <button onclick="routeSaveName()" style="padding:8px 14px;background:var(--accent);border:none;border-radius:6px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Save</button>
+          <button onclick="routeCancelEditName()" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:12px;cursor:pointer;">✕</button>
+        </div>
+      </div>
+      
+      <!-- Time info -->
+      <div id="route-detail-time" style="font-size:11px;color:var(--muted);margin-bottom:12px;"></div>
+      
+      <!-- Stats grid -->
+      <div id="route-detail-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;"></div>
+      
+      <!-- Chart tabs -->
+      <div style="display:flex;gap:4px;background:var(--surface2);border-radius:6px;padding:3px;margin-bottom:8px;">
+        <button class="route-chart-tab active" data-chart="elevation" onclick="routeChartTab('elevation')">Elevation</button>
+        <button class="route-chart-tab" data-chart="speed" onclick="routeChartTab('speed')">Speed</button>
+        <button class="route-chart-tab" data-chart="pace" onclick="routeChartTab('pace')">Pace</button>
+      </div>
+      
+      <!-- X-axis toggle -->
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;font-size:11px;">
+        <span style="color:var(--hint);">X-axis:</span>
+        <span id="route-xaxis-dist" class="route-xaxis-opt active" onclick="routeSetXAxis('distance')">Distance</span>
+        <span style="color:var(--hint);">|</span>
+        <span id="route-xaxis-time" class="route-xaxis-opt" onclick="routeSetXAxis('time')">Time</span>
+      </div>
+      
+      <!-- Chart container -->
+      <div id="route-chart-container" style="position:relative;height:160px;background:var(--surface2);border-radius:8px;margin-bottom:4px;touch-action:none;">
+        <canvas id="route-chart-canvas"></canvas>
+        <div id="route-chart-tooltip" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;pointer-events:none;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
+      </div>
+      
+      <!-- Chart hint -->
+      <div style="font-size:10px;color:var(--hint);text-align:center;margin-bottom:8px;">
+        Hover over the chart to see the point on the map
+      </div>
+      
+      <!-- Chart type toggle -->
+      <div style="display:flex;justify-content:center;gap:16px;margin-bottom:12px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;">
+          <input type="radio" name="route-chart-type" value="line" checked onchange="routeChartTypeChange('line')" style="accent-color:var(--accent);" />
+          Line
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;">
+          <input type="radio" name="route-chart-type" value="bar" onchange="routeChartTypeChange('bar')" />
+          Bar
+        </label>
+      </div>
+      
+      <!-- Export GPX button -->
+      <button onclick="routeExportGPX()" style="width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export as GPX
+      </button>
+      
+      <!-- Delete route button -->
+      <button onclick="routeDeleteFromPanel()" style="width:100%;padding:12px;margin-top:10px;background:var(--danger-bg);border:1px solid var(--danger);border-radius:8px;color:var(--danger);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        Delete route
+      </button>
     </div>
-    <!-- Elevation profile — rendered into the main elev-panel below the map -->
-    <div style="padding:10px 16px;font-size:10px;color:var(--hint);" id="routes-elev-note" style="display:none;">Elevation profile shown below map after import.</div>
   </div>
 </div>
 
@@ -2254,6 +2438,20 @@ function openPanel(id) {
     const warning = document.getElementById('ap-wifi-warning');
     if (warning) warning.style.display = (isWifiMode && apActive) ? 'block' : 'none';
   }
+  
+  // Routes panel — load routes from device
+  if (id === 'panel-routes') {
+    routeDetailView = false;
+    document.getElementById('routes-panel-title').textContent = 'Saved routes';
+    document.getElementById('routes-list-view').style.display = 'block';
+    document.getElementById('routes-detail-view').style.display = 'none';
+    if (isWifiMode) {
+      routesLoad();
+    } else {
+      // BLE mode — show routes from routeLogLayers (imported via GETLOG)
+      routesLoadFromBLE();
+    }
+  }
 }
 
 function closeAllPanels() {
@@ -2261,10 +2459,18 @@ function closeAllPanels() {
     document.getElementById(currentPanel).classList.remove('open');
     currentPanel = null;
   }
-  document.getElementById('az-overlay').style.display = 'none';
+  const overlay = document.getElementById('az-overlay');
+  overlay.style.display = 'none';
+  overlay.classList.remove('route-detail-mode');
   const menuBtn = document.getElementById('menu-btn');
   if (menuBtn) { menuBtn.style.borderColor = ''; menuBtn.style.color = ''; }
   drawerOpen = false;
+  
+  // Clear route detail state
+  if (routeDetailView) {
+    routeDetailView = false;
+    viewingRouteIdx = null;
+  }
 }
 
 function toggleDrawer() {
@@ -3313,6 +3519,23 @@ async function wifiPoll() {
           }
         }
       } catch(e) { /* groups endpoint may not exist on older firmware */ }
+      
+      // Fetch routes count for menu badge (WiFi mode)
+      try {
+        const rResp = await fetch('/api/routes');
+        if (rResp.ok) {
+          const rData = await rResp.json();
+          routesData = rData.routes || [];
+          updateRouteBadge(routesData.length);
+          // Update menu description
+          const descEl = document.getElementById('menu-routes-desc');
+          if (descEl) {
+            descEl.textContent = routesData.length > 0 
+              ? routesData.length + ' route' + (routesData.length > 1 ? 's' : '') + ' on device'
+              : 'No routes on device';
+          }
+        }
+      } catch(e) { /* routes endpoint may not exist on older firmware */ }
     }
     try {
       processDeviceState(d);
@@ -3612,6 +3835,20 @@ function wifiModeStart() {
     routesIcon.style.background = '#21262d';
   }
 
+  // Show WiFi-only menu items (Status, Config)
+  const statusItem = document.getElementById('menu-item-status');
+  const configItem = document.getElementById('menu-item-config');
+  if (statusItem) {
+    statusItem.style.display = 'flex';
+    const icon = statusItem.querySelector('.az-menu-icon');
+    if (icon) icon.style.background = '#21262d';
+  }
+  if (configItem) {
+    configItem.style.display = 'flex';
+    const icon = configItem.querySelector('.az-menu-icon');
+    if (icon) icon.style.background = '#21262d';
+  }
+
   // Hotspot is always active in WiFi mode (you can only be here if AP is running)
   const hostname = window.location.hostname;
   // Device name comes from first /api/state poll; fall back to hostname-based name
@@ -3661,6 +3898,9 @@ function wifiModeStart() {
   log('WiFi mode — connected to device at ' + window.location.hostname, 'ok');
   wifiPoll();
   wifiPollInterval = setInterval(wifiPoll, 1000);
+  
+  // Load routes to populate badge
+  routesLoad();
 }
 
 // ── Unified command sender — BLE or WiFi ─────────────────────────────────────
@@ -4530,6 +4770,7 @@ const ROUTE_COLOURS = ['#58a6ff','#3fb950','#f0883e','#d29922','#bc8cff',
 let currentRouteIdx  = -1;
 let currentRoutePts  = [];
 let routeLogLayers   = [];  // leaflet layers for all logged routes
+let bleRoutePointsData = []; // Store actual points for each BLE-imported route
 
 // onRouteNotify — alias to onRouteData (same buffered parser)
 function onRouteNotify(event) { onRouteData(event); }
@@ -4701,7 +4942,27 @@ function onSettingsNotify(event) {
             await setChar.writeValueWithResponse(new TextEncoder().encode("GETOWM")).catch(()=>{});
             // Read AP state so hotspot panel shows correct status on connect
             await setChar.writeValueWithResponse(new TextEncoder().encode("GETAP")).catch(()=>{});
-          } catch(e) {}
+            
+            // Auto-fetch routes from device using chunked protocol
+            if (routeChar) {
+              log('Fetching route info from device...', 'warn');
+              try {
+                // First get route count
+                await routeChar.writeValueWithoutResponse(new TextEncoder().encode("GETLOG"));
+                log('Route info requested', 'ok');
+                // The response will come via notification and trigger sequential route fetches
+              } catch(e) {
+                try {
+                  await routeChar.writeValueWithResponse(new TextEncoder().encode("GETLOG"));
+                } catch(e2) {
+                  log('GETLOG failed: ' + e2.message, 'err');
+                  console.error('GETLOG error:', e2);
+                }
+              }
+            } else {
+              log('Route characteristic not available', 'warn');
+            }
+          } catch(e) { console.error('Post-PIN setup error:', e); }
           // Start weather push interval
           wxStartInterval();
         }, 300);
@@ -5117,6 +5378,99 @@ function drawElevationProfile(alts) {
   statsEl.textContent = `↑ ${(minA*eFactor).toFixed(0)}${eUnit}  ↓ ${(maxA*eFactor).toFixed(0)}${eUnit}  gain ${(gain*eFactor).toFixed(0)}${eUnit}`;
 }
 
+// Update bottom chart based on current route chart mode
+function updateBottomChart() {
+  if (!currentRoutePoints || currentRoutePoints.length < 2) return;
+  
+  const panel = document.getElementById('elev-panel');
+  const canvas = document.getElementById('elev-chart');
+  const statsEl = document.getElementById('elev-stats');
+  const titleEl = document.getElementById('elev-title');
+  
+  panel.style.display = 'block';
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+  canvas.height = 80 * window.devicePixelRatio;
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  const W = canvas.offsetWidth, H = 80;
+  const pad = 4;
+  
+  let values, color, fillColor, statsText, title;
+  
+  if (routeChartMode === 'elevation') {
+    values = currentRoutePoints.map(p => p[3]); // alt
+    color = '#3b82f6';
+    fillColor = 'rgba(59,130,246,0.18)';
+    title = 'Elevation Profile';
+    const minA = Math.min(...values), maxA = Math.max(...values);
+    const eUnit = deviceSettings.elv === 1 ? 'ft' : 'm';
+    const eFactor = deviceSettings.elv === 1 ? 3.28084 : 1;
+    statsText = `↓ ${(minA*eFactor).toFixed(0)}${eUnit}  ↑ ${(maxA*eFactor).toFixed(0)}${eUnit}`;
+  } else if (routeChartMode === 'speed') {
+    values = currentRoutePoints.map(p => (p[2] || 0) * 3.6); // spd in km/h
+    color = '#10b981';
+    fillColor = 'rgba(16,185,129,0.18)';
+    title = 'Speed Profile';
+    const avg = values.reduce((a,b) => a+b, 0) / values.length;
+    const max = Math.max(...values);
+    statsText = `Avg ${avg.toFixed(1)} km/h  Max ${max.toFixed(1)} km/h`;
+  } else { // pace
+    values = currentRoutePoints.map(p => {
+      const spd = p[2] || 0;
+      return spd > 0.1 ? (1000 / (spd * 60)) : 0; // min/km
+    });
+    color = '#f59e0b';
+    fillColor = 'rgba(245,158,11,0.18)';
+    title = 'Pace Profile';
+    const validPaces = values.filter(p => p > 0 && p < 30);
+    if (validPaces.length > 0) {
+      const avg = validPaces.reduce((a,b) => a+b, 0) / validPaces.length;
+      const avgMin = Math.floor(avg);
+      const avgSec = Math.round((avg - avgMin) * 60);
+      statsText = `Avg pace ${avgMin}:${avgSec.toString().padStart(2,'0')} /km`;
+    } else {
+      statsText = 'No pace data';
+    }
+  }
+  
+  // Update title
+  if (titleEl) titleEl.textContent = title;
+  
+  const validValues = values.filter(v => v !== null && v !== undefined && !isNaN(v));
+  if (validValues.length < 2) return;
+  
+  const minV = Math.min(...validValues), maxV = Math.max(...validValues);
+  const range = maxV - minV || 1;
+  
+  // Clear and draw
+  ctx.clearRect(0, 0, W, H);
+  
+  // Fill
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  validValues.forEach((v, i) => {
+    const x = (i / (validValues.length - 1)) * W;
+    const y = H - pad - ((v - minV) / range) * (H - pad * 2);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+  
+  // Line
+  ctx.beginPath();
+  validValues.forEach((v, i) => {
+    const x = (i / (validValues.length - 1)) * W;
+    const y = H - pad - ((v - minV) / range) * (H - pad * 2);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  
+  statsEl.textContent = statsText;
+}
+
 function displayExportedRoute() {
   // Legacy single-route export — kept for manual Export button
   if (exportedRoute.length === 0) return;
@@ -5136,13 +5490,21 @@ async function exportRoute() {
   exportedRoute = [];
   log('Requesting routes from device...', 'warn');
   const enc = new TextEncoder();
-  await routeChar.writeValueWithResponse(enc.encode('GETLOG'));
+  try {
+    await routeChar.writeValueWithoutResponse(enc.encode('GETLOG'));
+  } catch(e) {
+    await routeChar.writeValueWithResponse(enc.encode('GETLOG'));
+  }
 }
 
 async function clearDeviceRoute() {
   if (!routeChar) { log('Not connected', 'warn'); return; }
   const enc = new TextEncoder();
-  await routeChar.writeValueWithResponse(enc.encode('CLR'));
+  try {
+    await routeChar.writeValueWithoutResponse(enc.encode('CLR'));
+  } catch(e) {
+    await routeChar.writeValueWithResponse(enc.encode('CLR'));
+  }
   exportedRoute = [];
   log('Device route cleared', 'ok');
 }
@@ -5205,17 +5567,17 @@ function updateUI({ lat, lon, alt, spd, hdg, sat, fix, approx, acc, ts, bat }) {
   const fixTxt = document.getElementById('fix-text');
   if (fix) {
     badge.classList.add('active');
-    badge.style.background = '';
+    badge.classList.remove('approx');
     fixTxt.textContent = `GPS fix · ${sat} sats`;
     // Device has fix — stop showing phone GPS
     if (phoneGpsActive) phoneGpsStop();
   } else if (approx) {
-    badge.classList.add('active');
-    badge.style.background = 'var(--warning, #d29922)';
+    badge.classList.remove('active');
+    badge.classList.add('approx');
     fixTxt.textContent = 'Approx location';
   } else {
     badge.classList.remove('active');
-    badge.style.background = '';
+    badge.classList.remove('approx');
     fixTxt.textContent = 'No fix';
   }
 
@@ -5312,52 +5674,239 @@ function clearTrack() {
 // Route data handler — reassembles chunked route from device
 let routeRxBuf = '';  // accumulates partial/concatenated BLE packets
 
+// Track chunked route fetching state
+let pendingRouteCount = 0;
+let currentFetchingRoute = -1;
+let expectedPointCount = 0;
+let receivedPointCount = 0;
+
 function processRoutePacket(data) {
+    // Silently ignore "no active transfer" errors (happen after transfer completes)
+    if (data.type === 'error' && data.msg === 'no active transfer') {
+      return;
+    }
+    
+    console.log('[Route] processRoutePacket:', data.type || 'point', data);
+    
+    // New chunked protocol: log_info tells us how many routes exist
+    if (data.type === 'log_info') {
+      pendingRouteCount = data.count || 0;
+      currentFetchingRoute = -1;
+      routeLogLayers = [];  // Clear existing
+      bleRoutePointsData = [];  // Clear stored points
+      window.bleRouteMetadata = [];  // Clear stored metadata
+      
+      // Show importing indicator in menu
+      const menuImporting = document.getElementById('menu-routes-importing');
+      const menuImportingText = document.getElementById('menu-routes-importing-text');
+      
+      // Show loading indicator in routes panel
+      const loadingEl = document.getElementById('routes-loading');
+      const listEl = document.getElementById('routes-list');
+      const emptyEl = document.getElementById('routes-empty');
+      
+      if (pendingRouteCount === 0) {
+        log('No routes saved on device', 'warn');
+        const desc = document.getElementById('menu-routes-desc');
+        if (desc) desc.textContent = 'No routes on device';
+        // Hide importing indicators
+        if (menuImporting) menuImporting.style.display = 'none';
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (emptyEl) emptyEl.style.display = 'block';
+        if (listEl) listEl.innerHTML = '';
+        return;
+      }
+      
+      // Show importing state in menu
+      if (menuImporting) {
+        menuImporting.style.display = 'flex';
+        if (menuImportingText) menuImportingText.textContent = `Importing ${pendingRouteCount} route${pendingRouteCount > 1 ? 's' : ''}...`;
+      }
+      
+      // Show loading state in panel
+      if (loadingEl) {
+        loadingEl.style.display = 'block';
+        document.getElementById('routes-loading-text').textContent = `Importing ${pendingRouteCount} route${pendingRouteCount > 1 ? 's' : ''}...`;
+      }
+      if (listEl) listEl.innerHTML = '';
+      if (emptyEl) emptyEl.style.display = 'none';
+      
+      log(pendingRouteCount + ' routes on device, fetching...', 'warn');
+      // Start fetching first route
+      requestNextRoute();
+      return;
+    }
+    
     if (data.type === 'route_start') {
       currentRouteIdx = data.route;
+      currentFetchingRoute = data.route;
       currentRouteAlts = [];
       currentRoutePts = [];
+      expectedPointCount = data.total || 0;
+      receivedPointCount = 0;
+      
+      // Store route metadata from header
+      if (!window.bleRouteMetadata) window.bleRouteMetadata = [];
+      window.bleRouteMetadata[data.route] = {
+        name: data.name || ('Route ' + (data.route + 1)),
+        distM: data.distM || 0,
+        startTime: data.startTime || 0
+      };
+      
+      // Update importing text in menu and panel
+      const menuImportingText = document.getElementById('menu-routes-importing-text');
+      if (menuImportingText) menuImportingText.textContent = `Importing route ${data.route + 1} of ${pendingRouteCount}...`;
+      const loadingText = document.getElementById('routes-loading-text');
+      if (loadingText) loadingText.textContent = `Importing route ${data.route + 1} of ${pendingRouteCount}...`;
+      
       log('Receiving route ' + (data.route + 1) + ' (' + data.total + ' pts)...', 'warn');
+      // Start polling for points
+      setTimeout(requestNextPoint, 20);
       return;
     }
 
     if (data.type === 'route_end') {
+      console.log('[Route] route_end, currentRoutePts:', currentRoutePts.length);
       if (currentRoutePts.length > 0) {
+        // Store route data but DON'T add to map yet - wait for user to select
         const colour = ROUTE_COLOURS[currentRouteIdx % ROUTE_COLOURS.length];
-        const layer  = L.polyline(currentRoutePts, {
+        const layer = L.polyline(currentRoutePts, {
           color: colour, weight: 3, opacity: 0.9
-        }).addTo(map);
-        // Popup with route number
+        });
+        // Don't add to map: .addTo(map) - will be shown when selected
         layer.bindPopup('Route ' + (currentRouteIdx + 1) +
                         ' — ' + currentRoutePts.length + ' points');
         routeLogLayers.push(layer);
+        
+        // Store actual points for this route (for chart/map display)
+        // Convert from [lat,lon] and exportedRoute to [lat, lon, spd, alt, ms] format
+        const storedPts = [];
+        for (let i = 0; i < currentRoutePts.length; i++) {
+          const pt = currentRoutePts[i];
+          const exp = exportedRoute[i] || {};
+          storedPts.push([pt[0], pt[1], exp.spd || 0, exp.alt || 0, exp.ts || 0]);
+        }
+        bleRoutePointsData.push(storedPts);
+        
+        log('Route ' + (currentRouteIdx + 1) + ' loaded (' + currentRoutePts.length + ' pts)', 'ok');
+      }
+      
+      // Clear exportedRoute for next route
+      exportedRoute = [];
+      
+      // Check if more routes to fetch (chunked protocol)
+      if (pendingRouteCount > 0 && currentFetchingRoute < pendingRouteCount - 1) {
+        // Small delay then request next route
+        setTimeout(requestNextRoute, 100);
+      } else if (pendingRouteCount > 0) {
+        // All routes fetched
+        finishRouteLoad();
       }
       return;
     }
 
+    // Legacy log_done (from old streaming protocol)
     if (data.type === 'log_done') {
-      if (data.total === 0 || routeLogLayers.length === 0) {
-        log('No routes saved on device', 'warn');
-        return;
-      }
-      drawElevationProfile(currentRouteAlts);
-      log('Route log received — ' + routeLogLayers.length + ' routes', 'ok');
-      updateRouteBadge(routeLogLayers.length);
-      if (routeLogLayers.length > 0) {
-        const allPts = routeLogLayers.flatMap(l => l.getLatLngs());
-        if (allPts.length > 0)
-          map.fitBounds(L.latLngBounds(allPts), { padding: [20, 20] });
-      }
+      console.log('[Route] log_done, routeLogLayers:', routeLogLayers.length);
+      finishRouteLoad();
       return;
     }
 
-    // Individual point
+    // Individual point — request next one after processing
     if (data.lat !== undefined) {
       currentRoutePts.push([data.lat, data.lon]);
       exportedRoute.push({ lat: data.lat, lon: data.lon, alt: data.alt, spd: data.spd, ts: data.t });
       currentRouteAlts.push(data.alt ?? null);
+      receivedPointCount++;
+      
+      // Request next point or route_end (polling mode)
+      // Need one more NEXT after last point to get route_end
+      if (receivedPointCount <= expectedPointCount) {
+        setTimeout(requestNextPoint, 10);  // Small delay then request next
+      }
     }
+}
 
+// Request next point in polling mode (with queue to prevent GATT overlap)
+let gattBusy = false;
+let gattQueue = [];
+
+async function requestNextPoint() {
+  if (!routeChar) return;
+  
+  // Queue the request if GATT is busy
+  if (gattBusy) {
+    gattQueue.push('NEXT');
+    return;
+  }
+  
+  gattBusy = true;
+  try {
+    await routeChar.writeValueWithoutResponse(new TextEncoder().encode("NEXT"));
+  } catch(e) {
+    // Ignore GATT busy errors, the notification will still arrive
+    if (!e.message.includes('in progress')) {
+      console.error('NEXT failed:', e);
+    }
+  }
+  gattBusy = false;
+  
+  // Process queued requests
+  if (gattQueue.length > 0) {
+    gattQueue.shift();
+    setTimeout(requestNextPoint, 5);
+  }
+}
+
+// Request the next route in sequence
+async function requestNextRoute() {
+  if (!routeChar) return;
+  currentFetchingRoute++;
+  console.log('[Route] Requesting route', currentFetchingRoute);
+  try {
+    const cmd = 'GETROUTE:' + currentFetchingRoute;
+    await routeChar.writeValueWithoutResponse(new TextEncoder().encode(cmd));
+  } catch(e) {
+    try {
+      await routeChar.writeValueWithResponse(new TextEncoder().encode('GETROUTE:' + currentFetchingRoute));
+    } catch(e2) {
+      log('Failed to request route ' + currentFetchingRoute, 'err');
+    }
+  }
+}
+
+// Called when all routes are loaded
+function finishRouteLoad() {
+  // Hide loading indicators
+  const loadingEl = document.getElementById('routes-loading');
+  if (loadingEl) loadingEl.style.display = 'none';
+  const menuImporting = document.getElementById('menu-routes-importing');
+  if (menuImporting) menuImporting.style.display = 'none';
+  
+  if (routeLogLayers.length === 0) {
+    log('No routes saved on device', 'warn');
+    const desc = document.getElementById('menu-routes-desc');
+    if (desc) desc.textContent = 'No routes on device';
+    const emptyEl = document.getElementById('routes-empty');
+    if (emptyEl) emptyEl.style.display = 'block';
+    return;
+  }
+  // Don't show elevation panel yet - wait for user to select a route
+  log('Route log received — ' + routeLogLayers.length + ' routes', 'ok');
+  updateRouteBadge(routeLogLayers.length);
+  
+  // Update menu description
+  const desc = document.getElementById('menu-routes-desc');
+  if (desc) desc.textContent = routeLogLayers.length + ' routes on device';
+  
+  // Rebuild routesData from imported layers so panel works
+  routesLoadFromBLE();
+  
+  // Don't show routes on map or fit bounds - wait for user to select a route
+  
+  // Reset state
+  pendingRouteCount = 0;
+  currentFetchingRoute = -1;
 }
 
 function onRouteData(event) {
@@ -5372,11 +5921,12 @@ function onRouteData(event) {
       else if (routeRxBuf[i] === '}') {
         depth--;
         if (depth === 0 && start !== -1) {
+          const jsonStr = routeRxBuf.substring(start, i + 1);
           try {
-            const obj = JSON.parse(routeRxBuf.substring(start, i + 1));
+            const obj = JSON.parse(jsonStr);
             processRoutePacket(obj);
           } catch(pe) {
-            console.warn('Route JSON parse skip:', pe.message);
+            console.warn('Route JSON parse fail:', jsonStr.substring(0, 100), pe.message);
           }
           routeRxBuf = routeRxBuf.substring(i + 1);  // consume processed
           i = -1;  // restart scan on remaining buffer
@@ -5387,7 +5937,10 @@ function onRouteData(event) {
     // Trim leading whitespace/garbage from buffer
     routeRxBuf = routeRxBuf.trimStart();
     // Safety: if buffer grows too large without a complete object, clear it
-    if (routeRxBuf.length > 512) { routeRxBuf = ''; }
+    if (routeRxBuf.length > 512) {
+      console.warn('Route buffer overflow, clearing:', routeRxBuf.substring(0, 100));
+      routeRxBuf = '';
+    }
 
   } catch(e) {
     log('Route parse error: ' + e.message, 'err');
@@ -5420,6 +5973,939 @@ function clearRecordedRoute() {
   routeBuffer = [];
   log('Route display cleared');
   updateRouteBadge(0);
+}
+
+// ── Route Panel — WiFi API based ──────────────────────────────────────────────
+let routesData = [];           // array of route summaries from /api/routes
+let viewingRouteIdx = null;    // index of currently viewed route in detail panel
+let currentRoutePoints = [];   // full point data for current route
+let routeChartMode = 'elevation';  // 'elevation', 'speed', 'pace'
+let routeXAxisMode = 'distance';   // 'distance', 'time'
+let routeChartType = 'line';       // 'line', 'bar'
+let routeDetailView = false;
+let routeMapLayer = null;      // Leaflet polyline for route on map
+let routeMapMarker = null;     // Current position marker on map
+
+// Load routes list from device
+async function routesLoad() {
+  // Show loading indicator
+  const loadingEl = document.getElementById('routes-loading');
+  const listEl = document.getElementById('routes-list');
+  const emptyEl = document.getElementById('routes-empty');
+  if (loadingEl) { loadingEl.style.display = 'block'; document.getElementById('routes-loading-text').textContent = 'Loading routes...'; }
+  if (listEl) listEl.innerHTML = '';
+  if (emptyEl) emptyEl.style.display = 'none';
+  
+  try {
+    const resp = await fetch('/api/routes');
+    const data = await resp.json();
+    routesData = data.routes || [];
+    if (loadingEl) loadingEl.style.display = 'none';
+    routesRenderList();
+    updateRouteBadge(routesData.length);
+    // Also update menu description
+    const desc = document.getElementById('menu-routes-desc');
+    if (desc) desc.textContent = routesData.length ? routesData.length + ' routes on device' : 'No routes on device';
+  } catch (e) {
+    console.error('Failed to load routes, using dummy data:', e);
+    if (loadingEl) loadingEl.style.display = 'none';
+    // Dummy data for local testing
+    routesData = [
+      { idx: 0, name: "Morning Run", startTime: 1712912400, pts: 250, distM: 5230, durMs: 1847000, minAlt: 45, maxAlt: 112, avgAlt: 78, maxSpd: 3.8, avgSpd: 2.9 },
+      { idx: 1, name: "Park Loop", startTime: 1712998800, pts: 180, distM: 3150, durMs: 1071000, minAlt: 52, maxAlt: 137, avgAlt: 94, maxSpd: 4.2, avgSpd: 3.1 },
+      { idx: 2, name: "Hill Climb", startTime: 1713085200, pts: 420, distM: 8420, durMs: 6240000, minAlt: 65, maxAlt: 410, avgAlt: 238, maxSpd: 5.1, avgSpd: 1.4 }
+    ];
+    routesRenderList();
+    updateRouteBadge(routesData.length);
+    const desc = document.getElementById('menu-routes-desc');
+    if (desc) desc.textContent = routesData.length + ' routes (demo)';
+  }
+}
+
+// Load routes from BLE-imported data (routeLogLayers)
+function routesLoadFromBLE() {
+  console.log('[Routes] routesLoadFromBLE called, routeLogLayers:', routeLogLayers ? routeLogLayers.length : 'null');
+  
+  // In BLE mode, routes are stored in routeLogLayers after GETLOG command
+  if (!routeLogLayers || routeLogLayers.length === 0) {
+    routesData = [];
+    routesRenderList();
+    // Show import prompt
+    const listEl = document.getElementById('routes-list');
+    if (listEl) {
+      listEl.innerHTML = `
+        <div style="padding:24px 16px;text-align:center;">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">
+            No routes imported yet.<br>Click below to fetch routes from the connected device.
+          </div>
+          <button onclick="exportRoute()" style="padding:10px 20px;background:var(--accent);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+            Import routes from device
+          </button>
+        </div>
+      `;
+    }
+    return;
+  }
+  
+  // Build routesData from imported layers
+  routesData = routeLogLayers.map((layer, i) => {
+    const latlngs = layer.getLatLngs();
+    const pts = latlngs.length;
+    
+    // Get metadata from route_start header if available
+    const meta = (window.bleRouteMetadata && window.bleRouteMetadata[i]) || {};
+    
+    // Calculate distance (use metadata if available, otherwise compute)
+    let distM = meta.distM || 0;
+    if (!distM) {
+      for (let j = 1; j < latlngs.length; j++) {
+        distM += latlngs[j-1].distanceTo(latlngs[j]);
+      }
+    }
+    
+    // Get point data for stats
+    const routePts = bleRoutePointsData[i] || [];
+    const alts = routePts.map(p => p[3] || 0).filter(a => a > 0);
+    const spds = routePts.map(p => p[2] || 0).filter(s => s > 0);
+    const minAlt = alts.length ? Math.min(...alts) : 0;
+    const maxAlt = alts.length ? Math.max(...alts) : 0;
+    const maxSpd = spds.length ? Math.max(...spds) : 0;
+    const avgSpd = spds.length ? spds.reduce((a,b) => a+b, 0) / spds.length : 0;
+    
+    // Calculate duration from point timestamps if available
+    let durMs = 0;
+    if (routePts.length >= 2) {
+      const firstMs = routePts[0][4] || 0;
+      const lastMs = routePts[routePts.length - 1][4] || 0;
+      durMs = lastMs - firstMs;
+    }
+    
+    return {
+      idx: i,
+      name: meta.name || ('Route ' + (i + 1)),
+      startTime: meta.startTime || 0,
+      pts: pts,
+      distM: distM,
+      durMs: durMs,
+      minAlt: minAlt,
+      maxAlt: maxAlt,
+      avgAlt: alts.length ? alts.reduce((a,b) => a+b, 0) / alts.length : 0,
+      maxSpd: maxSpd,
+      avgSpd: avgSpd
+    };
+  });
+  
+  console.log('[Routes] Built routesData:', routesData.length, 'routes');
+  routesRenderList();
+  updateRouteBadge(routesData.length);
+}
+
+// Render the routes list
+function routesRenderList() {
+  const listEl = document.getElementById('routes-list');
+  const emptyEl = document.getElementById('routes-empty');
+  
+  if (!routesData.length) {
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    return;
+  }
+  
+  // Theme-aware icon colors (all outline style)
+  const iconColor = currentTheme === 'canyon' ? '#EF9F27' : currentTheme === 'mountain' ? '#5A6472' : '#4A7C59';
+  
+  // Icon SVGs - 16px for date/time row
+  const calendarIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="2" x2="9" y2="6"/><line x1="15" y1="2" x2="15" y2="6"/></svg>`;
+  
+  const clockIconLg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/><path d="M12 2v2"/></svg>`;
+  
+  // Icon SVGs - 12px for stats row
+  const clockIconSm = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/><path d="M12 2v2"/></svg>`;
+  
+  const elevIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="1.5" stroke-linecap="round"><path d="M8 21l4-10 4 10"/><path d="M2 21l5-14 3 7"/><path d="M22 21l-5-18-4 11"/></svg>`;
+  
+  const pinIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/></svg>`;
+  
+  emptyEl.style.display = 'none';
+  listEl.innerHTML = routesData.map((r, i) => {
+    const dist = formatDistance(r.distM);
+    const dur = formatDuration(r.durMs);
+    const date = r.startTime ? new Date(r.startTime * 1000).toLocaleDateString() : '';
+    const time = r.startTime ? new Date(r.startTime * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+    const elevGain = formatElevation(r.maxAlt - r.minAlt, true);
+    // Handle empty or missing name
+    const name = (r.name && r.name.trim()) ? r.name : ('Route ' + (i + 1));
+    
+    return `
+      <div class="route-item" data-idx="${i}">
+        <div class="route-item-content" onclick="routeSelect(${i})">
+          <div style="font-weight:600;color:var(--text);font-size:15px;margin-bottom:6px;">${escapeHtml(name)}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);">
+              ${date ? `${calendarIcon}<span>${date}</span>` : ''}
+              ${time ? `<span style="margin-left:6px;">${clockIconLg}</span><span>${time}</span>` : ''}
+            </div>
+            <div style="font-size:18px;font-weight:600;color:var(--accent);">${dist}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;font-size:12px;color:var(--muted);">
+            <span style="display:inline-flex;align-items:center;gap:4px;">${clockIconSm}${dur}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;">${elevIcon}${elevGain}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;">${pinIcon}${r.pts} pts</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Swipe-to-delete handling
+let swipeStartX = 0;
+let swipeCurrentX = 0;
+let swipingIdx = null;
+
+function routeSwipeStart(e, idx) {
+  if (e.touches.length !== 1) return;
+  swipeStartX = e.touches[0].clientX;
+  swipeCurrentX = swipeStartX;
+  swipingIdx = idx;
+  const el = document.querySelector(`.route-item[data-idx="${idx}"]`);
+  if (el) el.classList.add('swiping');
+}
+
+function routeSwipeMove(e, idx) {
+  if (swipingIdx !== idx) return;
+  swipeCurrentX = e.touches[0].clientX;
+  const diff = swipeStartX - swipeCurrentX;
+  const el = document.querySelector(`.route-item[data-idx="${idx}"] .route-item-content`);
+  if (el && diff > 0) {
+    el.style.transform = `translateX(${-Math.min(diff, 80)}px)`;
+  }
+}
+
+function routeSwipeEnd(e, idx) {
+  if (swipingIdx !== idx) return;
+  const diff = swipeStartX - swipeCurrentX;
+  const el = document.querySelector(`.route-item[data-idx="${idx}"]`);
+  const contentEl = document.querySelector(`.route-item[data-idx="${idx}"] .route-item-content`);
+  
+  if (el) el.classList.remove('swiping');
+  
+  if (diff > 60) {
+    // Delete
+    routeDelete(idx);
+  } else {
+    // Snap back
+    if (contentEl) contentEl.style.transform = '';
+  }
+  swipingIdx = null;
+}
+
+async function routeDelete(idx) {
+  const el = document.querySelector(`.route-item[data-idx="${idx}"]`);
+  if (el) el.classList.add('deleting');
+  
+  try {
+    const formData = new FormData();
+    formData.append('idx', idx);
+    await fetch('/api/route/delete', {
+      method: 'POST',
+      body: new URLSearchParams({ idx: idx })
+    });
+    
+    // Wait for animation then reload
+    setTimeout(() => routesLoad(), 250);
+  } catch (e) {
+    console.error('Delete failed:', e);
+    if (el) el.classList.remove('deleting');
+  }
+}
+
+// Delete with confirmation (for click/desktop)
+function routeDeleteConfirm(idx) {
+  const r = routesData[idx];
+  const name = (r && r.name) ? r.name : ('Route ' + (idx + 1));
+  if (confirm(`Delete "${name}"?\n\nThis cannot be undone.`)) {
+    routeDelete(idx);
+  }
+}
+
+// Delete from route detail panel with confirmation
+function routeDeleteFromPanel() {
+  if (viewingRouteIdx === null) return;
+  const r = routesData[viewingRouteIdx];
+  const name = (r && r.name) ? r.name : ('Route ' + (viewingRouteIdx + 1));
+  
+  if (confirm(`Delete "${name}"?\n\nThis action cannot be undone.`)) {
+    if (confirm(`Are you sure you want to permanently delete this route?`)) {
+      const idx = viewingRouteIdx;
+      // Go back to list first
+      routesBack();
+      // Then delete
+      routeDelete(idx);
+    }
+  }
+}
+
+// Select a route to view details
+async function routeSelect(idx) {
+  viewingRouteIdx = idx;
+  routeDetailView = true;
+  
+  // Enable transparent overlay so map is interactive
+  const overlay = document.getElementById('az-overlay');
+  if (overlay) overlay.classList.add('route-detail-mode');
+  
+  const r = routesData[idx];
+  document.getElementById('routes-panel-title').textContent = 'Route details';
+  document.getElementById('routes-list-view').style.display = 'none';
+  document.getElementById('routes-detail-view').style.display = 'block';
+  
+  // Populate header - handle empty/missing name
+  const routeName = (r.name && r.name.trim()) ? r.name : ('Route ' + (idx + 1));
+  document.getElementById('route-detail-name-text').textContent = routeName;
+  document.getElementById('route-detail-name').value = routeName;
+  // Show display mode, hide edit mode
+  document.getElementById('route-name-display').style.display = 'flex';
+  document.getElementById('route-name-edit').style.display = 'none';
+  
+  // Time info
+  const timeEl = document.getElementById('route-detail-time');
+  if (r.startTime) {
+    const start = new Date(r.startTime * 1000);
+    const end = new Date((r.startTime * 1000) + r.durMs);
+    timeEl.textContent = `${start.toLocaleDateString()} · ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} → ${end.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} · ${formatDuration(r.durMs)}`;
+  } else {
+    timeEl.textContent = formatDuration(r.durMs);
+  }
+  
+  // Stats
+  const dist = formatDistance(r.distM);
+  const avgSpd = (r.avgSpd * 3.6).toFixed(1);
+  const maxSpd = (r.maxSpd * 3.6).toFixed(1);
+  const elevGain = formatElevation(r.maxAlt - r.minAlt, true);
+  
+  document.getElementById('route-detail-stats').innerHTML = `
+    <div class="route-stat-card"><div class="val" style="color:var(--accent);">${dist}</div><div class="lbl">Distance</div></div>
+    <div class="route-stat-card"><div class="val">${elevGain}</div><div class="lbl">Elevation</div></div>
+    <div class="route-stat-card"><div class="val">${avgSpd}</div><div class="lbl">Avg km/h</div></div>
+    <div class="route-stat-card"><div class="val">${maxSpd}</div><div class="lbl">Max km/h</div></div>
+  `;
+  
+  // Load full route data
+  try {
+    const resp = await fetch(`/api/route?idx=${idx}`);
+    const data = await resp.json();
+    currentRoutePoints = data.points || [];
+  } catch (e) {
+    console.error('Failed to load route points:', e);
+    // Check if we have BLE-imported points for this route
+    if (bleRoutePointsData[idx] && bleRoutePointsData[idx].length > 0) {
+      console.log('[Route] Using BLE-imported points for route', idx);
+      currentRoutePoints = bleRoutePointsData[idx];
+    } else {
+      // Fall back to dummy data for testing
+      console.log('[Route] Using dummy data for route', idx);
+      currentRoutePoints = generateDummyRoutePoints(r);
+    }
+  }
+  
+  // Draw chart
+  routeDrawChart();
+  
+  // Update bottom elevation panel to match
+  updateBottomChart();
+  
+  // Auto-show route on map (if map available)
+  if (!isWifiMode && typeof L !== 'undefined' && !L.noOffline && currentRoutePoints.length > 0) {
+    routeShowOnMap();
+  }
+}
+
+// Start editing route name
+function routeStartEditName() {
+  document.getElementById('route-name-display').style.display = 'none';
+  document.getElementById('route-name-edit').style.display = 'flex';
+  const input = document.getElementById('route-detail-name');
+  input.focus();
+  input.select();
+}
+
+// Cancel editing route name
+function routeCancelEditName() {
+  document.getElementById('route-name-display').style.display = 'flex';
+  document.getElementById('route-name-edit').style.display = 'none';
+  // Reset input to current name
+  const currentName = document.getElementById('route-detail-name-text').textContent;
+  document.getElementById('route-detail-name').value = currentName;
+}
+
+// Generate dummy route points for local testing
+function generateDummyRoutePoints(route) {
+  const pts = [];
+  const numPoints = route.pts || 100;
+  const idx = route.idx || 0;
+  
+  // Vary base location by route index
+  const baseLat = 53.2527 + (idx * 0.025);
+  const baseLon = -2.4285 + (idx * 0.03);
+  const baseAlt = route.minAlt || 50;
+  const altRange = (route.maxAlt || 150) - baseAlt;
+  const totalMs = route.durMs || 3600000;
+  
+  // Vary route shape by index
+  const shapeMultiplier = 1 + idx * 0.5;
+  const rotationOffset = idx * Math.PI / 3;
+  
+  for (let i = 0; i < numPoints; i++) {
+    const pct = i / (numPoints - 1);
+    // Create a looping path with variation per route
+    const angle = pct * Math.PI * 2 + rotationOffset;
+    const lat = baseLat + Math.sin(angle) * 0.01 * shapeMultiplier + Math.cos(angle * 3) * 0.003;
+    const lon = baseLon + Math.cos(angle) * 0.015 * shapeMultiplier + Math.sin(angle * 2) * 0.004;
+    // Elevation profile: hill in the middle
+    const altPct = Math.sin(pct * Math.PI);
+    const alt = baseAlt + altPct * altRange + (Math.random() - 0.5) * 10;
+    // Speed varies
+    const spd = 1.5 + Math.random() * 2.5 + (1 - altPct) * 1.5;
+    const ms = Math.round(pct * totalMs);
+    // Format: [lat, lon, spd, alt, ms]
+    pts.push([lat, lon, spd, alt, ms]);
+  }
+  return pts;
+}
+
+// Back button handling
+function routesBack() {
+  if (routeDetailView) {
+    routeDetailView = false;
+    document.getElementById('routes-panel-title').textContent = 'Saved routes';
+    document.getElementById('routes-list-view').style.display = 'block';
+    document.getElementById('routes-detail-view').style.display = 'none';
+    viewingRouteIdx = null;
+    currentRoutePoints = [];
+    
+    // Remove route-detail-mode from overlay
+    const overlay = document.getElementById('az-overlay');
+    if (overlay) overlay.classList.remove('route-detail-mode');
+    
+    // Hide elevation panel
+    const elevPanel = document.getElementById('elev-panel');
+    if (elevPanel) elevPanel.style.display = 'none';
+    
+    // Clear route from map
+    if (routeMapLayer) {
+      map.removeLayer(routeMapLayer);
+      routeMapLayer = null;
+    }
+    if (routeMapMarker) {
+      map.removeLayer(routeMapMarker);
+      routeMapMarker = null;
+    }
+  } else {
+    openPanel('panel-main');
+  }
+}
+
+// Save route name
+async function routeSaveName() {
+  if (viewingRouteIdx === null) return;
+  const name = document.getElementById('route-detail-name').value.trim();
+  if (!name) return;
+  
+  const isBleConnected = bleDevice && bleDevice.gatt && bleDevice.gatt.connected;
+  
+  try {
+    // Update via WiFi API if not BLE connected
+    if (!isBleConnected) {
+      await fetch('/api/route/rename', {
+        method: 'POST',
+        body: new URLSearchParams({ idx: viewingRouteIdx, name: name })
+      });
+    } else if (routeChar) {
+      // Send rename command via BLE
+      const cmd = `RENAME:${viewingRouteIdx}:${name}`;
+      try {
+        await routeChar.writeValueWithoutResponse(new TextEncoder().encode(cmd));
+      } catch(e) {
+        await routeChar.writeValueWithResponse(new TextEncoder().encode(cmd));
+      }
+    }
+    
+    // Update local data
+    routesData[viewingRouteIdx].name = name;
+    
+    // Update display name text
+    document.getElementById('route-detail-name-text').textContent = name;
+    
+    // Switch back to display mode
+    document.getElementById('route-name-display').style.display = 'flex';
+    document.getElementById('route-name-edit').style.display = 'none';
+    
+    // Update route list if visible
+    const listEl = document.querySelector(`.route-item[data-idx="${viewingRouteIdx}"] .route-item-content > div > div:first-child > div:first-child`);
+    if (listEl) listEl.textContent = name;
+    
+    log('Route renamed', 'ok');
+  } catch (e) {
+    console.error('Rename failed:', e);
+    log('Rename failed', 'err');
+  }
+}
+
+// Chart tab switching
+function routeChartTab(mode) {
+  routeChartMode = mode;
+  document.querySelectorAll('.route-chart-tab').forEach(el => {
+    el.classList.toggle('active', el.dataset.chart === mode);
+  });
+  routeDrawChart();
+  
+  // Also update the bottom elevation panel to match
+  updateBottomChart();
+}
+
+// X-axis toggle
+function routeSetXAxis(mode) {
+  routeXAxisMode = mode;
+  document.getElementById('route-xaxis-dist').classList.toggle('active', mode === 'distance');
+  document.getElementById('route-xaxis-time').classList.toggle('active', mode === 'time');
+  routeDrawChart();
+}
+
+// Chart type toggle
+function routeChartTypeChange(type) {
+  routeChartType = type;
+  routeDrawChart();
+}
+
+// Draw the interactive chart
+function routeDrawChart() {
+  const container = document.getElementById('route-chart-container');
+  const canvas = document.getElementById('route-chart-canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Set canvas size
+  const rect = container.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.scale(dpr, dpr);
+  
+  if (!currentRoutePoints.length) return;
+  
+  // Calculate data based on mode
+  // Point format: [lat, lon, spd, alt, ms]
+  let values = [];
+  let xValues = [];
+  let cumDist = 0;
+  
+  for (let i = 0; i < currentRoutePoints.length; i++) {
+    const p = currentRoutePoints[i];
+    
+    // X-axis value
+    if (routeXAxisMode === 'distance') {
+      if (i > 0) {
+        const prev = currentRoutePoints[i - 1];
+        cumDist += haversine(prev[0], prev[1], p[0], p[1]);
+      }
+      xValues.push(cumDist / 1000); // km
+    } else {
+      xValues.push((p[4] - currentRoutePoints[0][4]) / 1000 / 60); // minutes
+    }
+    
+    // Y-axis value
+    if (routeChartMode === 'elevation') {
+      values.push(p[3]); // altitude
+    } else if (routeChartMode === 'speed') {
+      values.push(p[2] * 3.6); // km/h
+    } else {
+      // Pace (min/km) - avoid division by zero
+      const spdKmh = p[2] * 3.6;
+      values.push(spdKmh > 0.5 ? 60 / spdKmh : 0);
+    }
+  }
+  
+  const minY = Math.min(...values.filter(v => v > 0));
+  const maxY = Math.max(...values);
+  const minX = Math.min(...xValues);
+  const maxX = Math.max(...xValues);
+  
+  const padding = { top: 20, right: 20, bottom: 25, left: 40 };
+  const w = rect.width - padding.left - padding.right;
+  const h = rect.height - padding.top - padding.bottom;
+  const yRange = maxY - minY || 1;
+  const xRange = maxX - minX || 1;
+  
+  // Clear
+  ctx.clearRect(0, 0, rect.width, rect.height);
+  
+  // Get colors based on mode
+  let chartColor, chartFillColor;
+  if (routeChartMode === 'elevation') {
+    chartColor = '#3b82f6';  // blue
+    chartFillColor = 'rgba(59,130,246,0.18)';
+  } else if (routeChartMode === 'speed') {
+    chartColor = '#10b981';  // green
+    chartFillColor = 'rgba(16,185,129,0.18)';
+  } else {
+    chartColor = '#f59e0b';  // amber
+    chartFillColor = 'rgba(245,158,11,0.18)';
+  }
+  
+  const style = getComputedStyle(document.documentElement);
+  const mutedColor = style.getPropertyValue('--muted').trim() || '#888';
+  const borderColor = style.getPropertyValue('--border').trim() || '#ddd';
+  
+  // Draw grid
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (h * i / 4);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(rect.width - padding.right, y);
+    ctx.stroke();
+  }
+  
+  // Y-axis labels
+  ctx.fillStyle = mutedColor;
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const val = maxY - (yRange * i / 4);
+    const y = padding.top + (h * i / 4);
+    ctx.fillText(Math.round(val), padding.left - 5, y + 3);
+  }
+  
+  // X-axis labels
+  ctx.textAlign = 'center';
+  const xUnit = routeXAxisMode === 'distance' ? 'km' : 'min';
+  ctx.fillText('0', padding.left, rect.height - 5);
+  ctx.fillText(maxX.toFixed(1) + ' ' + xUnit, rect.width - padding.right, rect.height - 5);
+  
+  // Helper to convert data to canvas coords
+  const toX = (xVal) => padding.left + ((xVal - minX) / xRange) * w;
+  const toY = (yVal) => padding.top + h - ((yVal - minY) / yRange) * h;
+  
+  if (routeChartType === 'line') {
+    // Draw filled area
+    ctx.beginPath();
+    ctx.moveTo(toX(xValues[0]), padding.top + h);
+    for (let i = 0; i < values.length; i++) {
+      ctx.lineTo(toX(xValues[i]), toY(values[i]));
+    }
+    ctx.lineTo(toX(xValues[xValues.length - 1]), padding.top + h);
+    ctx.closePath();
+    ctx.fillStyle = chartFillColor;
+    ctx.fill();
+    
+    // Draw line
+    ctx.beginPath();
+    ctx.moveTo(toX(xValues[0]), toY(values[0]));
+    for (let i = 1; i < values.length; i++) {
+      ctx.lineTo(toX(xValues[i]), toY(values[i]));
+    }
+    ctx.strokeStyle = chartColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  } else {
+    // Bar chart - sample down to ~30 bars
+    const barCount = Math.min(30, values.length);
+    const step = Math.floor(values.length / barCount);
+    const barWidth = w / barCount - 2;
+    
+    ctx.fillStyle = chartColor;
+    for (let i = 0; i < barCount; i++) {
+      const idx = Math.min(i * step, values.length - 1);
+      const barHeight = ((values[idx] - minY) / yRange) * h;
+      const x = padding.left + (i * (w / barCount)) + 1;
+      ctx.fillRect(x, padding.top + h - barHeight, barWidth, barHeight);
+    }
+  }
+  
+  // Store chart data for touch interaction
+  container._chartData = { values, xValues, minY, maxY, minX, maxX, toX, toY, padding, w, h };
+  
+  // Setup touch handlers
+  container.onmousemove = (e) => routeChartHover(e);
+  container.ontouchmove = (e) => routeChartTouch(e);
+  container.onmouseleave = () => routeChartHideTooltip();
+  container.ontouchend = () => routeChartHideTooltip();
+}
+
+function routeChartHover(e) {
+  const container = document.getElementById('route-chart-container');
+  const rect = container.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  routeChartShowTooltip(x, rect.width);
+}
+
+function routeChartTouch(e) {
+  if (!e.touches.length) return;
+  e.preventDefault();
+  const container = document.getElementById('route-chart-container');
+  const rect = container.getBoundingClientRect();
+  const x = e.touches[0].clientX - rect.left;
+  routeChartShowTooltip(x, rect.width);
+}
+
+function routeChartShowTooltip(x, width) {
+  const container = document.getElementById('route-chart-container');
+  const tooltip = document.getElementById('route-chart-tooltip');
+  const data = container._chartData;
+  if (!data || !currentRoutePoints.length) return;
+  
+  // Find nearest point
+  const { values, xValues, minX, maxX, padding, w } = data;
+  const chartX = x - padding.left;
+  const pct = Math.max(0, Math.min(1, chartX / w));
+  const xVal = minX + pct * (maxX - minX);
+  
+  // Find closest index
+  let closestIdx = 0;
+  let closestDist = Infinity;
+  for (let i = 0; i < xValues.length; i++) {
+    const d = Math.abs(xValues[i] - xVal);
+    if (d < closestDist) {
+      closestDist = d;
+      closestIdx = i;
+    }
+  }
+  
+  const point = currentRoutePoints[closestIdx];
+  const val = values[closestIdx];
+  
+  // Build tooltip content
+  let unit = '';
+  let valStr = '';
+  if (routeChartMode === 'elevation') {
+    valStr = Math.round(val) + 'm';
+  } else if (routeChartMode === 'speed') {
+    valStr = val.toFixed(1) + ' km/h';
+  } else {
+    valStr = val > 0 ? val.toFixed(1) + ' min/km' : '—';
+  }
+  
+  const xStr = routeXAxisMode === 'distance' 
+    ? xValues[closestIdx].toFixed(2) + ' km'
+    : Math.round(xValues[closestIdx]) + ' min';
+  
+  tooltip.innerHTML = `
+    <div style="font-size:16px;font-weight:600;color:var(--text);">${valStr}</div>
+    <div style="font-size:11px;color:var(--muted);">at ${xStr}</div>
+  `;
+  
+  // Position tooltip
+  tooltip.style.display = 'block';
+  const tooltipRect = tooltip.getBoundingClientRect();
+  let left = x - tooltipRect.width / 2;
+  left = Math.max(5, Math.min(width - tooltipRect.width - 5, left));
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = '5px';
+  
+  // Highlight point on map if visible
+  routeHighlightMapPoint(closestIdx);
+}
+
+function routeChartHideTooltip() {
+  const tooltip = document.getElementById('route-chart-tooltip');
+  tooltip.style.display = 'none';
+  routeClearMapHighlight();
+}
+
+// Show route on map with elevation colouring
+function routeShowOnMap() {
+  if (!currentRoutePoints.length) return;
+  if (isWifiMode || typeof L === 'undefined' || L.noOffline) {
+    // No map available - show info toast
+    alert('Map not available in WiFi mode.\n\nConnect via Bluetooth to view routes on the map, or export as GPX to view in another app.');
+    return;
+  }
+  
+  // Remove existing route layer and marker
+  if (routeMapLayer) {
+    map.removeLayer(routeMapLayer);
+    routeMapLayer = null;
+  }
+  if (routeMapMarker) {
+    map.removeLayer(routeMapMarker);
+    routeMapMarker = null;
+  }
+  
+  // Find elevation range for colouring
+  const alts = currentRoutePoints.map(p => p[3]);
+  const minAlt = Math.min(...alts);
+  const maxAlt = Math.max(...alts);
+  const altRange = maxAlt - minAlt || 1;
+  
+  // Create polyline segments with elevation-based colours
+  const latlngs = currentRoutePoints.map(p => [p[0], p[1]]);
+  const segments = [];
+  
+  for (let i = 0; i < currentRoutePoints.length - 1; i++) {
+    const alt = currentRoutePoints[i][3];
+    const pct = (alt - minAlt) / altRange;
+    // Green → Teal → Amber → Red based on elevation
+    let color;
+    if (pct < 0.25) {
+      color = '#1D9E75'; // green (low)
+    } else if (pct < 0.5) {
+      color = '#5DCAA5'; // teal
+    } else if (pct < 0.75) {
+      color = '#EF9F27'; // amber
+    } else {
+      color = '#D85A30'; // red (high)
+    }
+    segments.push(L.polyline([latlngs[i], latlngs[i + 1]], {
+      color: color,
+      weight: 4,
+      opacity: 0.9
+    }));
+  }
+  
+  // Add all segments to a layer group
+  routeMapLayer = L.layerGroup(segments).addTo(map);
+  
+  // Fit map to route bounds
+  const bounds = L.latLngBounds(latlngs);
+  map.fitBounds(bounds, { padding: [30, 30] });
+  
+  // Keep panel open (don't close it)
+  log('Route displayed with elevation colouring', 'ok');
+}
+
+function routeHighlightMapPoint(idx) {
+  if (isWifiMode || !currentRoutePoints.length) return;
+  
+  const p = currentRoutePoints[idx];
+  if (!p) return;
+  
+  // Get value based on current chart mode
+  let valueText;
+  if (routeChartMode === 'elevation') {
+    valueText = `${Math.round(p[3])}m`;
+  } else if (routeChartMode === 'speed') {
+    valueText = `${(p[2] * 3.6).toFixed(1)} km/h`;
+  } else {
+    // Pace
+    const pace = p[2] > 0.1 ? (1000 / (p[2] * 60)) : 0;
+    const paceMin = Math.floor(pace);
+    const paceSec = Math.round((pace - paceMin) * 60);
+    valueText = `${paceMin}:${paceSec.toString().padStart(2, '0')} /km`;
+  }
+  
+  if (routeMapMarker) {
+    routeMapMarker.setLatLng([p[0], p[1]]);
+    routeMapMarker.setTooltipContent(valueText);
+  } else {
+    routeMapMarker = L.circleMarker([p[0], p[1]], {
+      radius: 8,
+      color: '#fff',
+      fillColor: '#3fb950',
+      fillOpacity: 1,
+      weight: 2
+    }).addTo(map);
+    routeMapMarker.bindTooltip(valueText, {
+      permanent: true,
+      direction: 'top',
+      offset: [0, -8],
+      className: 'route-marker-tooltip'
+    }).openTooltip();
+  }
+}
+
+function routeClearMapHighlight() {
+  if (routeMapMarker) {
+    map.removeLayer(routeMapMarker);
+    routeMapMarker = null;
+  }
+}
+
+// Export current route as GPX
+function routeExportGPX() {
+  if (!currentRoutePoints.length) {
+    log('No route data to export', 'warn');
+    return;
+  }
+  
+  const r = routesData[viewingRouteIdx];
+  let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Azimuth">
+  <trk><name>${escapeHtml(r?.name || 'Route')}</name><trkseg>
+`;
+  
+  for (const p of currentRoutePoints) {
+    gpx += `    <trkpt lat="${p[0].toFixed(7)}" lon="${p[1].toFixed(7)}">
+      <ele>${p[3].toFixed(1)}</ele>
+      <extensions><speed>${p[2].toFixed(2)}</speed></extensions>
+    </trkpt>\n`;
+  }
+  
+  gpx += `  </trkseg></trk>\n</gpx>`;
+  
+  const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(r?.name || 'route').replace(/[^a-z0-9]/gi, '_')}.gpx`;
+  a.click();
+  URL.revokeObjectURL(url);
+  log('Route exported as GPX', 'ok');
+}
+
+// Helper: format duration
+function formatDuration(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h + 'h ' + m + 'm';
+}
+
+// Format distance for display (handles m, km, large km)
+function formatDistance(meters, short = false) {
+  if (meters < 1000) {
+    return Math.round(meters) + (short ? 'm' : ' m');
+  } else if (meters < 10000) {
+    // Under 10km: show 2 decimal places
+    return (meters / 1000).toFixed(2) + (short ? 'km' : ' km');
+  } else if (meters < 100000) {
+    // 10-100km: show 1 decimal place
+    return (meters / 1000).toFixed(1) + (short ? 'km' : ' km');
+  } else {
+    // 100km+: show no decimal places
+    return Math.round(meters / 1000).toLocaleString() + (short ? 'km' : ' km');
+  }
+}
+
+// Format elevation for display (handles m, km for very high)
+function formatElevation(meters, short = false) {
+  if (Math.abs(meters) < 10000) {
+    return Math.round(meters).toLocaleString() + (short ? 'm' : ' m');
+  } else {
+    // 10,000m+ show as km
+    return (meters / 1000).toFixed(1) + (short ? 'km' : ' km');
+  }
+}
+
+// Helper: haversine distance in metres
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Helper: escape HTML
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function exportGPX() {
@@ -6472,6 +7958,12 @@ function applyTheme(t) {
   // PWA theme-color meta
   const meta = document.getElementById('theme-color-meta');
   if (meta) meta.content = t === 'canyon' ? '#854F0B' : t === 'mountain' ? '#5A6472' : '#4A7C59';
+  
+  // Re-render routes list with new theme icons
+  if (routesData && routesData.length > 0) {
+    routesRenderList();
+  }
+  
   // Modal stays open — user closes with the Close button
 }
 

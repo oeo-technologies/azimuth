@@ -1,8 +1,17 @@
 /*
  * Azimuth GPS Tracker Firmware — OEO Technologies
  * =====================================================================
- * Version : v3.17
+ * Version : v3.18
  * Changes :
+ *   v3.18 — Route viewer, Track Log management, BLE route transfer
+ *          Web app route panel: browse saved routes with map, elevation chart.
+ *          Route stats: distance, duration, elevation, speed profiles.
+ *          GPX export for individual routes.
+ *          BLE polling protocol for reliable route transfer to mobile.
+ *          Track Log page redesigned with scrollable route list.
+ *          Individual route deletion with confirmation dialog.
+ *          Route naming support (stored in flash, editable via web/BLE).
+ *          Fixed compass display positioning.
  *   v3.17 — Mesh status, config portal, lockdown mode, WiFi QR code
  *          New /status endpoint: self-contained HTML status page showing
  *          device info, battery, GPS, uptime, LoRa status, peer table with
@@ -96,27 +105,41 @@
  *   v3.0.1 — Page reordering, conditional pages system.
  *   v3.0.0 — LoRa crash fix (RadioLib include inside ENABLE_LORA guard).
  * =====================================================================
- * Board   : Heltec WiFi LoRa 32(V4)
- * GPS     : AT6558R via Serial1 RX=39 TX=38
- * Display : Onboard SSD1306 128x64 OLED SDA=17 SCL=18 RST=21
+ * Board   : Heltec WiFi LoRa 32 V3 (default) or Wireless Tracker v1.2
+ * GPS     : AT6558R (V3) or UC6580 (Tracker)
+ * Display : SSD1306 128x64 OLED (V3) or ST7735 160x80 TFT (Tracker)
  * BLE     : NimBLE-Arduino 1.4.2
  * LoRa    : RadioLib (SX1262)
  *
  * Libraries (Arduino Library Manager):
  *  1. Heltec ESP32 Dev-Boards  (Heltec Automation) — 3.0.3
- *  2. Adafruit SSD1306         (Adafruit)
+ *  2. Adafruit SSD1306         (Adafruit) — for V3 only
  *  3. Adafruit GFX Library     (Adafruit)
- *  4. TinyGPSPlus              (Mikal Hart)
- *  5. NimBLE-Arduino 1.4.2     (h2zero)
- *  6. RadioLib                 (jgromes) — 6.6.0
+ *  4. Adafruit ST7735          (Adafruit) — for Tracker only
+ *  5. TinyGPSPlus              (Mikal Hart)
+ *  6. NimBLE-Arduino 1.4.2     (h2zero)
+ *  7. RadioLib                 (jgromes) — 6.6.0
  *
- * Board settings:
- *  Board           : WiFi LoRa 32(V4)
+ * Board settings (WiFi LoRa 32 V3):
+ *  Board           : WiFi LoRa 32(V3)
  *  USB CDC On Boot : Enabled
- *  Flash Size      : 16MB
- *  Partition Scheme: 16M Flash (3MB APP/9.9MB FATFS)
+ *  Flash Size      : 8MB
+ *  Partition Scheme: 8M Flash (3MB APP/9.9MB FATFS)
+ *  Upload Speed    : 921600
+ *
+ * Board settings (Wireless Tracker v1.2):
+ *  Board           : Wireless Tracker
+ *  USB CDC On Boot : Enabled
+ *  Flash Size      : 8MB
+ *  Partition Scheme: 8M Flash (3MB APP/9.9MB FATFS)
  *  Upload Speed    : 921600
  */
+
+// ============================================================
+// BOARD SELECTION — uncomment ONE of these
+// ============================================================
+// #define BOARD_WIRELESS_TRACKER  // Heltec Wireless Tracker v1.2 (TFT, built-in GPS)
+#define BOARD_WIFI_LORA_V3        // Heltec WiFi LoRa 32 V3 (OLED, external GPS)
 
 // ============================================================
 // INCLUDES
@@ -124,7 +147,63 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+
+#ifdef BOARD_WIRELESS_TRACKER
+  #include <SPI.h>
+  #include <Adafruit_ST7735.h>
+  
+  // Custom subclass to set correct offsets for Heltec Wireless Tracker 160x80 panel
+  class HeltecST7735 : public Adafruit_ST7735 {
+  public:
+    // Hardware SPI constructor (3 args) - much faster
+    HeltecST7735(int8_t cs, int8_t dc, int8_t rst)
+      : Adafruit_ST7735(cs, dc, rst) {}
+    
+    void initHeltec() {
+      initR(INITR_MINI160x80);
+      // Apply Meshtastic/HeltecTrackerDisplay offsets: XSTART=1, YSTART=26
+      // These are base offsets before rotation is applied
+      _colstart = 26;  
+      _rowstart = 1;
+      setRotation(1);  // This recalculates _xstart/_ystart from _colstart/_rowstart
+      invertDisplay(true);
+    }
+  };
+  
+  // ══════════════════════════════════════════════════════════════
+  // TERRAIN COLOUR PALETTE — OEO Brand + Functional Colours
+  // ══════════════════════════════════════════════════════════════
+  // RGB565 format: ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+  
+  // Background & Text (BGR565 for ST7735)
+  #define COL_BG_DARK     0x0000  // Black background
+  #define COL_BG_LIGHT    0xEF9E  // #F4F1EB Paper (light background)
+  #define COL_TEXT_PRI    0xEF9E  // #F4F1EB Paper (primary text on dark)
+  #define COL_TEXT_SEC    0x94B3  // #9B9690 Hint (secondary/muted text)
+  #define COL_TEXT_DIM    0x632D  // #6B6760 Muted
+  
+  // Brand & Semantic Colours (BGR565 for ST7735)
+  #define COL_FOREST      0x4327  // #3D6647 Forest green — GPS fix, active, positive
+  #define COL_AMBER       0x24FD  // #EF9F27 Amber — warnings, acquiring, battery low
+  #define COL_RED         0x4A5C  // #E24B4A Red — errors, north needle, critical
+  #define COL_BLUE        0xEDB0  // #85B7EB Blue — info, peers, Bluetooth
+  #define COL_GREEN_LIGHT 0x5E32  // #97C459 Light green — speed, positive data
+  #define COL_BLUE_DARK   0xA2E3  // #185FA5 Dark blue — title text on green bg
+  
+  // UI Elements
+  #define COL_HEADER_LINE COL_FOREST  // Header separator line
+  #define COL_NAV_ACTIVE  COL_AMBER    // Active nav dot (amber)
+  #define COL_NAV_IDLE    COL_TEXT_DIM // Inactive nav dot outline
+  
+  // Backward compatibility — map OLED constants
+  #define SSD1306_WHITE   COL_TEXT_PRI
+  #define SSD1306_BLACK   COL_BG_DARK
+  #define SSD1306_INVERSE COL_TEXT_PRI
+  #define SSD1306_SWITCHCAPVCC 0
+#else
+  #include <Adafruit_SSD1306.h>
+#endif
+
 #include <Fonts/FreeSansBold12pt7b.h>
 #include <Fonts/FreeSansOblique12pt7b.h>
 #include <TinyGPSPlus.h>
@@ -147,43 +226,100 @@
 // LoRa SPI bus — instantiated inside loraBegin() to avoid global constructor issues
 
 // ============================================================
-// PIN DEFINITIONS
+// PIN DEFINITIONS — board-specific
 // ============================================================
-#define VEXT_CTRL_PIN   36
-#define VGNSS_CTRL_PIN  34
-#define OLED_SDA        17
-#define OLED_SCL        18
-#define OLED_RST        21
-#define OLED_ADDRESS    0x3C
-#define SCREEN_W        128
-#define SCREEN_H        64
-#define BAT_ADC_PIN     1
-#define BAT_CTRL_PIN    37
-#define BAT_DIVIDER     0.204
-#define BAT_ADC_REF     3.3
-#define BAT_ADC_RES     4095
-#define BAT_MAX_V       4.2
-#define BAT_MIN_V       3.3
-#define BAT_READ_MS     30000
-#define BAT_NO_BAT_V    3.80  // charger IC idle rail ~3.85V — above this = no battery
-#define BAT_FULL_V      4.15  // above this on USB = real battery fully charged
+#ifdef BOARD_WIRELESS_TRACKER
+  // Heltec Wireless Tracker v1.2
+  #define VEXT_CTRL_PIN   3     // Controls power to TFT + GNSS
+  #define GNSS_RST_PIN    35
+  #define GNSS_PPS_PIN    36
+  
+  // TFT Display (ST7735 160x80)
+  #define TFT_CS          38
+  #define TFT_RST         39
+  #define TFT_DC          40
+  #define TFT_SCLK        41
+  #define TFT_MOSI        42
+  #define TFT_LED         21    // Backlight control
+  #define SCREEN_W        160
+  #define SCREEN_H        80
+  
+  // GPS (UC6580)
+  #define GPS_RX_PIN      34    // GNSS_RX (ESP32 receives from GPS TX)
+  #define GPS_TX_PIN      33    // GNSS_TX (ESP32 sends to GPS RX)
+  #define GPS_BAUD        9600
+  
+  // Battery ADC
+  #define BAT_ADC_PIN     1
+  #define BAT_CTRL_PIN    2     // ADC enable
+  #define BAT_MULTIPLIER  4.9   // Voltage divider ratio per datasheet
+  #define BAT_ADC_REF     3.3
+  #define BAT_ADC_RES     4095
+  #define BAT_MAX_V       4.2
+  #define BAT_MIN_V       3.3
+  #define BAT_READ_MS     30000
+  #define BAT_NO_BAT_V    3.80
+  #define BAT_FULL_V      4.15
+  
+  // No dedicated LED on Tracker — use TFT backlight flash instead
+  #define LED_PIN         21
+  #define LED_FLASH_MS    100
+  #define LED_INTERVAL_MS 10000
+  
+  #define BTN_PIN         0
+  #define BTN_LONG_MS     1000
+  #define BTN_POWER_MS    3000
+  #define DISPLAY_TIMEOUT_MS 10000
 
-#define LED_PIN         35    // White LED, active HIGH
-#define LED_FLASH_MS    100   // flash duration ms
-#define LED_INTERVAL_MS 10000 // flash every 10s when recording
+#else
+  // Heltec WiFi LoRa 32 V3 (default)
+  #define VEXT_CTRL_PIN   36
+  #define VGNSS_CTRL_PIN  34
+  
+  // OLED Display (SSD1306 128x64)
+  #define OLED_SDA        17
+  #define OLED_SCL        18
+  #define OLED_RST        21
+  #define OLED_ADDRESS    0x3C
+  #define SCREEN_W        128
+  #define SCREEN_H        64
+  
+  // GPS (AT6558R external module)
+  #define GPS_RX_PIN      39
+  #define GPS_TX_PIN      38
+  #define GPS_BAUD        9600
+  
+  // Battery ADC
+  #define BAT_ADC_PIN     1
+  #define BAT_CTRL_PIN    37
+  #define BAT_DIVIDER     0.204
+  #define BAT_ADC_REF     3.3
+  #define BAT_ADC_RES     4095
+  #define BAT_MAX_V       4.2
+  #define BAT_MIN_V       3.3
+  #define BAT_READ_MS     30000
+  #define BAT_NO_BAT_V    3.80
+  #define BAT_FULL_V      4.15
+  
+  #define LED_PIN         35
+  #define LED_FLASH_MS    100
+  #define LED_INTERVAL_MS 10000
+  
+  #define BTN_PIN         0
+  #define BTN_LONG_MS     1000
+  #define BTN_POWER_MS    3000
+  #define DISPLAY_TIMEOUT_MS 10000
+#endif
 
-#define BTN_PIN         0
-#define BTN_LONG_MS     1000
-#define BTN_POWER_MS    3000
-#define OLED_TIMEOUT_MS 10000
+// Common display layout constants
+#define DISPLAY_CONTENT_MAX_Y  (SCREEN_H - 8)  // Leave room for nav dots
+#define DISPLAY_HINT_Y         (SCREEN_H - 18) // Standard hint text position
 
-// OLED layout constants - nav dots at y=58, so content must stay above
-#define OLED_CONTENT_MAX_Y  56  // Last safe y for content (nav dots start at 58)
-#define OLED_HINT_Y         46  // Standard y position for hint text
-
-#define GPS_RX_PIN      39  // GPS module TX -> ESP32 RX (confirmed by Meshtastic)
-#define GPS_TX_PIN      38  // ESP32 TX -> GPS module RX
-#define GPS_BAUD        9600
+// Layout helpers for cross-platform compatibility
+#define SCREEN_MAX_X           (SCREEN_W - 1)  // Rightmost pixel
+#define SCREEN_MAX_Y           (SCREEN_H - 1)  // Bottom pixel
+#define HEADER_LINE_Y          10              // Y position of header separator line
+#define CONTENT_START_Y        13              // Y position where content begins (after header)
 
 // ============================================================
 // BLE
@@ -282,7 +418,26 @@ struct LoraMsg {
 // ============================================================
 // GLOBALS
 // ============================================================
-Adafruit_SSD1306 display(SCREEN_W, SCREEN_H, &Wire, OLED_RST);
+#ifdef BOARD_WIRELESS_TRACKER
+  // TFT display for Wireless Tracker using hardware SPI for speed
+  HeltecST7735 tft = HeltecST7735(TFT_CS, TFT_DC, TFT_RST);
+  #define display tft  // Alias so existing code works
+  // TFT renders immediately — wrappers for OLED compatibility
+  inline void displayFlush() { /* no-op for TFT */ }
+  inline void displayClear() { tft.fillScreen(COL_BG_DARK); }
+  inline void displayInvert(bool i) { tft.invertDisplay(i); }
+  inline void displayOn()  { digitalWrite(TFT_LED, HIGH); }
+  inline void displayOff() { digitalWrite(TFT_LED, LOW); }
+#else
+  // OLED display for WiFi LoRa 32 V3
+  Adafruit_SSD1306 display(SCREEN_W, SCREEN_H, &Wire, OLED_RST);
+  inline void displayFlush() { display.display(); }
+  inline void displayClear() { display.clearDisplay(); }
+  inline void displayInvert(bool i) { display.invertDisplay(i); }
+  inline void displayOn()  { display.ssd1306_command(SSD1306_DISPLAYON); }
+  inline void displayOff() { display.ssd1306_command(SSD1306_DISPLAYOFF); }
+#endif
+
 TinyGPSPlus      gps;
 HardwareSerial   gpsSerial(1);
 Preferences      prefs;
@@ -534,11 +689,14 @@ float       routeTotalDist = 0.0;
 
 // Route log — stores completed routes
 #define ROUTE_LOG_MAX  10
+#define ROUTE_NAME_LEN 32
 
 struct RouteLog {
   RoutePoint* points;
   int         count;
   float       distM;
+  char        name[ROUTE_NAME_LEN];  // user-editable name
+  uint32_t    startTime;              // epoch seconds when route started (0 if unknown)
 };
 
 RouteLog  routeLog[ROUTE_LOG_MAX];
@@ -566,6 +724,24 @@ void routeLogSave() {
   routeLog[routeLogCount].points = pts;
   routeLog[routeLogCount].count  = routeCount;
   routeLog[routeLogCount].distM  = routeTotalDist;
+  
+  // Default name: "Route N"
+  snprintf(routeLog[routeLogCount].name, ROUTE_NAME_LEN, "Route %d", routeLogCount + 1);
+  
+  // Timestamp: use GPS time if valid, else 0
+  if (gps.date.isValid() && gps.time.isValid()) {
+    struct tm t = {0};
+    t.tm_year = gps.date.year() - 1900;
+    t.tm_mon  = gps.date.month() - 1;
+    t.tm_mday = gps.date.day();
+    t.tm_hour = gps.time.hour();
+    t.tm_min  = gps.time.minute();
+    t.tm_sec  = gps.time.second();
+    routeLog[routeLogCount].startTime = mktime(&t);
+  } else {
+    routeLog[routeLogCount].startTime = 0;
+  }
+  
   routeLogCount++;
 
   Serial.printf("[LOG] Route %d saved: %d pts, %.0fm\n",
@@ -593,8 +769,37 @@ void routeLogClear() {
   }
 }
 
+// Delete a single route at index and shift others down
+void routeLogDeleteAt(int idx) {
+  if (idx < 0 || idx >= routeLogCount) return;
+  
+  // Free memory for the deleted route
+  if (routeLog[idx].points) {
+    free(routeLog[idx].points);
+    routeLog[idx].points = nullptr;
+  }
+  
+  // Shift remaining routes down
+  for (int i = idx; i < routeLogCount - 1; i++) {
+    routeLog[i] = routeLog[i + 1];
+  }
+  
+  // Clear the last slot
+  routeLog[routeLogCount - 1].points = nullptr;
+  routeLog[routeLogCount - 1].count = 0;
+  routeLog[routeLogCount - 1].distM = 0;
+  routeLog[routeLogCount - 1].name[0] = '\0';
+  routeLog[routeLogCount - 1].startTime = 0;
+  
+  routeLogCount--;
+  Serial.printf("[LOG] Route %d deleted, %d remaining\n", idx + 1, routeLogCount);
+  
+  // Rewrite all route files to flash (renumber them)
+  routeLogFlushAll();
+}
+
 // ── FFat route persistence ────────────────────────────────────────────────────
-// File format per route: [count:4][distM:4][RoutePoint * count]
+// File format per route: [count:4][distM:4][name:32][startTime:4][RoutePoint * count]
 // Files: /route_0.bin .. /route_9.bin
 
 void routeLogFlushAll() {
@@ -610,9 +815,11 @@ void routeLogFlushAll() {
     if (!f) { Serial.printf("[FFAT] Cannot write %s\n", path); continue; }
     f.write((uint8_t*)&routeLog[i].count, 4);
     f.write((uint8_t*)&routeLog[i].distM, 4);
+    f.write((uint8_t*)routeLog[i].name, ROUTE_NAME_LEN);
+    f.write((uint8_t*)&routeLog[i].startTime, 4);
     f.write((uint8_t*)routeLog[i].points, routeLog[i].count * sizeof(RoutePoint));
     f.close();
-    Serial.printf("[FFAT] Saved %s (%d pts, %.0fm)\n", path, routeLog[i].count, routeLog[i].distM);
+    Serial.printf("[FFAT] Saved %s (%d pts, %.0fm, '%s')\n", path, routeLog[i].count, routeLog[i].distM, routeLog[i].name);
   }
 }
 
@@ -636,21 +843,45 @@ void routeLogLoad() {
     if (!FFat.exists(path)) continue;
     File f = FFat.open(path, FILE_READ);
     if (!f) continue;
-    int   count; float distM;
+    
+    int count; float distM;
+    char name[ROUTE_NAME_LEN] = {0};
+    uint32_t startTime = 0;
+    
+    // Read header
     if (f.read((uint8_t*)&count, 4) != 4 || f.read((uint8_t*)&distM, 4) != 4 || count <= 0 || count > ROUTE_MAX_POINTS) {
       f.close(); FFat.remove(path); continue;  // corrupt file
     }
+    
+    // Check file size to determine format (old vs new)
+    size_t expectedOld = 8 + count * sizeof(RoutePoint);
+    size_t expectedNew = 8 + ROUTE_NAME_LEN + 4 + count * sizeof(RoutePoint);
+    size_t fileSize = f.size();
+    
+    if (fileSize >= expectedNew) {
+      // New format with name and timestamp
+      f.read((uint8_t*)name, ROUTE_NAME_LEN);
+      f.read((uint8_t*)&startTime, 4);
+    } else {
+      // Old format — use default name
+      snprintf(name, ROUTE_NAME_LEN, "Route %d", i + 1);
+      startTime = 0;
+    }
+    
     RoutePoint* pts = (RoutePoint*)malloc(count * sizeof(RoutePoint));
     if (!pts) { f.close(); continue; }
     if ((int)f.read((uint8_t*)pts, count * sizeof(RoutePoint)) != count * (int)sizeof(RoutePoint)) {
       free(pts); f.close(); FFat.remove(path); continue;
     }
     f.close();
+    
     routeLog[routeLogCount].points = pts;
     routeLog[routeLogCount].count  = count;
     routeLog[routeLogCount].distM  = distM;
+    strncpy(routeLog[routeLogCount].name, name, ROUTE_NAME_LEN);
+    routeLog[routeLogCount].startTime = startTime;
     routeLogCount++;
-    Serial.printf("[FFAT] Loaded %s (%d pts, %.0fm)\n", path, count, distM);
+    Serial.printf("[FFAT] Loaded %s (%d pts, %.0fm, '%s')\n", path, count, distM, name);
   }
   Serial.printf("[FFAT] %d route(s) restored\n", routeLogCount);
 }
@@ -1009,6 +1240,12 @@ uint32_t settingsIdleMs  = 0;      // last interaction time — auto-exit after 
 bool     settingsSaved   = false;  // true for one draw cycle to show saved message
 uint32_t settingsSavedMs = 0;      // when saved message was shown
 bool     qrCodeActive    = false;  // true while showing WiFi QR code (blocks timeout)
+
+// Track Log page state
+uint8_t  trackLogRow     = 0;      // selected row in track log (0 = summary, 1+ = routes)
+bool     trackLogConfirm = false;  // true when confirming delete
+bool     trackLogDeleted = false;  // true for one cycle to show deleted message
+uint32_t trackLogDeletedMs = 0;    // when deleted message was shown
 
 // WiFi & connected mode
 char     wifiSSID[64]    = "";
@@ -1409,13 +1646,20 @@ bool     batCharging = false;  // true when USB + real battery present
 void readBattery() {
   // --- ADC battery voltage read ---
   pinMode(BAT_CTRL_PIN, OUTPUT);
-  digitalWrite(BAT_CTRL_PIN, HIGH);  // HIGH enables voltage divider (V4 datasheet)
+  digitalWrite(BAT_CTRL_PIN, HIGH);  // Enable voltage divider / ADC
   delay(10);
   int raw = 0;
   for (int i = 0; i < 8; i++) { raw += analogRead(BAT_ADC_PIN); delay(2); }
   raw /= 8;
+  
+#ifdef BOARD_WIRELESS_TRACKER
+  // Wireless Tracker: Vbat = ADC × 4.9 (per datasheet)
+  batVoltage = (raw / (float)BAT_ADC_RES) * BAT_ADC_REF * BAT_MULTIPLIER;
+#else
+  // WiFi LoRa 32 V3: Vbat = ADC / divider ratio
   batVoltage = (raw / (float)BAT_ADC_RES) * BAT_ADC_REF / BAT_DIVIDER;
-  digitalWrite(BAT_CTRL_PIN, LOW);   // LOW disables — saves power between reads
+#endif
+  digitalWrite(BAT_CTRL_PIN, LOW);   // Disable — saves power between reads
 
   // --- USB detection via charger IC behaviour ---
   // No battery: charger IC idles at ~3.85V (stable, mid-range float)
@@ -1534,7 +1778,7 @@ void saveSettings() {
 #endif
   prefs.end();
   // Apply brightness — full=normal, dim=inverted display (more noticeable than contrast)
-  display.invertDisplay(!setBrightFull);
+  displayInvert(!setBrightFull);
 }
 void saveLastPosition() {
   prefs.begin("azimuth", false);
@@ -2525,7 +2769,7 @@ void keyShareAccept() {
   loraKeyShareAck();
   
   // Show confirmation on OLED
-  display.clearDisplay();
+  displayClear();
   display.setTextSize(1);
   display.setCursor(0, 16);
   display.println("Joined group!");
@@ -2535,7 +2779,7 @@ void keyShareAccept() {
   display.setCursor(0, 48);
   display.print("Via: ");
   display.println(pendingKeyShare.leaderName);
-  display.display();
+  displayFlush();
   delay(2000);
   
   // Clear pending (RAM + NVS)
@@ -2775,12 +3019,12 @@ void loraHandlePacket(uint8_t* buf, int len) {
     // Send ACK
     loraRegAck(newName);
     // Show confirmation on OLED
-    display.clearDisplay();
+    displayClear();
     display.setTextSize(1);
     display.setCursor(0, 20);
     display.println("Name assigned:");
     display.println(bleDeviceName);
-    display.display();
+    displayFlush();
     delay(1500);
     oledDraw();
     return;
@@ -3752,9 +3996,9 @@ class SecurityCB : public NimBLESecurityCallbacks {
       pairingActive  = false;
       pairingPending = false;
       // Show brief failure message
-      display.clearDisplay();
+      displayClear();
       display.setCursor(20, 28); display.println("Pairing failed");
-      display.display(); delay(1500);
+      displayFlush(); delay(1500);
       currentPage = prePairingPage;
       oledDraw();
     }
@@ -3815,9 +4059,51 @@ class RouteCharCB : public NimBLECharacteristicCallbacks {
     if (!isReadCmd && !sessionAuthorised) {
       return;
     }
+    // GETLOG — returns route count only, webapp then requests each route
     if (val == "GETLOG" || val == "getlog") {
+      char msg[64];
+      snprintf(msg, sizeof(msg), "{\"type\":\"log_info\",\"count\":%d}", routeLogCount);
+      pRouteChar->setValue(msg); pRouteChar->notify();
+      Serial.printf("[BLE] GETLOG: %d routes available\n", routeLogCount);
+    }
+    // NEXT — webapp requests next point (polling mode)
+    else if (val == "NEXT" || val == "next") {
+      bleSendNextRoutePoint();
+    }
+    // GETROUTE:n — get specific route by index (chunked, webapp requests each)
+    else if (val.rfind("GETROUTE:", 0) == 0 || val.rfind("getroute:", 0) == 0) {
+      int idx = atoi(val.c_str() + 9);
+      if (idx < 0 || idx >= routeLogCount) {
+        char err[48];
+        snprintf(err, sizeof(err), "{\"type\":\"route_error\",\"msg\":\"invalid index\"}");
+        pRouteChar->setValue(err); pRouteChar->notify();
+        return;
+      }
+      blePushSingleRoute(idx);
+    }
+    // Legacy GETLOG_ALL — streams all routes (unreliable with Chrome)
+    else if (val == "GETLOG_ALL" || val == "getlog_all") {
       blePushRouteLog();
-    } else if (val == "GET" || val == "get") {
+    }
+    // RENAME:idx:name — rename a route
+    else if (val.rfind("RENAME:", 0) == 0 || val.rfind("rename:", 0) == 0) {
+      // Parse "RENAME:idx:name"
+      size_t firstColon = val.find(':', 7);
+      if (firstColon != std::string::npos) {
+        int idx = atoi(val.c_str() + 7);
+        std::string newName = val.substr(firstColon + 1);
+        if (idx >= 0 && idx < routeLogCount && newName.length() > 0 && newName.length() < ROUTE_NAME_LEN) {
+          strncpy(routeLog[idx].name, newName.c_str(), ROUTE_NAME_LEN - 1);
+          routeLog[idx].name[ROUTE_NAME_LEN - 1] = '\0';
+          routeLogFlushAll();  // Save to NVS
+          Serial.printf("[BLE] Route %d renamed to: %s\n", idx, routeLog[idx].name);
+          char ack[48];
+          snprintf(ack, sizeof(ack), "{\"type\":\"renamed\",\"route\":%d}", idx);
+          pRouteChar->setValue(ack); pRouteChar->notify();
+        }
+      }
+    }
+    else if (val == "GET" || val == "get") {
       Serial.printf("[ROUTE] Export: %d pts\n", routeCount);
       for (int i = 0; i < routeCount; i++) {
         char buf[96];
@@ -3853,6 +4139,8 @@ class RouteCharCB : public NimBLECharacteristicCallbacks {
         oledRedrawPending = true;
       }
     } else if (val == "SCREENSHOT" || val == "screenshot") {
+#ifndef BOARD_WIRELESS_TRACKER
+      // Screenshot only supported on OLED (has accessible frame buffer)
       if (!pScrnChar) return;
       const uint8_t* buf = display.getBuffer();
       for (int chunk = 0; chunk < 16; chunk++) {
@@ -3865,13 +4153,20 @@ class RouteCharCB : public NimBLECharacteristicCallbacks {
         delay(30);
       }
       Serial.println("[BLE] Screenshot sent");
+#else
+      Serial.println("[BLE] Screenshot not supported on TFT");
+#endif
     }
   }
 };
 
 // Push all logged routes to web app via BLE route characteristic
 void blePushRouteLog() {
-  if (!pRouteChar) return;
+  Serial.printf("[BLE] blePushRouteLog called, routeLogCount=%d\n", routeLogCount);
+  if (!pRouteChar) {
+    Serial.println("[BLE] pRouteChar is null!");
+    return;
+  }
   if (routeLogCount == 0) {
     // No routes — send empty log_done so web app knows
     char msg[32];
@@ -3880,14 +4175,17 @@ void blePushRouteLog() {
     Serial.println("[BLE] No routes to push");
     return;
   }
+  Serial.printf("[BLE] Pushing %d routes...\n", routeLogCount);
   for (int r = 0; r < routeLogCount; r++) {
     // Send route start header
     char hdr[64];
     snprintf(hdr, sizeof(hdr),
       "{\"type\":\"route_start\",\"route\":%d,\"total\":%d}",
       r, routeLog[r].count);
-    pRouteChar->setValue(hdr); pRouteChar->notify(); delay(20);
-    // Send all points
+    pRouteChar->setValue(hdr); pRouteChar->notify(); 
+    delay(100);
+    Serial.printf("[BLE] Sending route %d (%d pts)...\n", r, routeLog[r].count);
+    // Send all points with 100ms delay — slow but reliable
     for (int i = 0; i < routeLog[r].count; i++) {
       char buf[96];
       snprintf(buf, sizeof(buf),
@@ -3895,13 +4193,17 @@ void blePushRouteLog() {
         i, routeLog[r].points[i].ms,
         routeLog[r].points[i].lat, routeLog[r].points[i].lon,
         routeLog[r].points[i].spd, routeLog[r].points[i].alt);
-      pRouteChar->setValue(buf); pRouteChar->notify(); delay(20);
+      pRouteChar->setValue(buf); pRouteChar->notify();
+      delay(100);
+      yield();
     }
     // Send route end
     char ftr[48];
     snprintf(ftr, sizeof(ftr),
       "{\"type\":\"route_end\",\"route\":%d}", r);
-    pRouteChar->setValue(ftr); pRouteChar->notify(); delay(30);
+    pRouteChar->setValue(ftr); pRouteChar->notify(); 
+    delay(100);
+    Serial.printf("[BLE] Route %d sent\n", r);
   }
   // All done
   char done[32];
@@ -3909,6 +4211,64 @@ void blePushRouteLog() {
     "{\"type\":\"log_done\",\"total\":%d}", routeLogCount);
   pRouteChar->setValue(done); pRouteChar->notify();
   Serial.println("[BLE] Route log push complete");
+}
+
+// Push a single route by index — webapp controls flow via polling
+// Webapp sends GETROUTE:n, then repeatedly sends NEXT to get each point
+int bleRouteIdx = -1;      // Current route being sent
+int bleRoutePointIdx = -1; // Current point index within route
+bool bleRouteSending = false;
+
+void blePushSingleRoute(int idx) {
+  if (!pRouteChar || idx < 0 || idx >= routeLogCount) return;
+  
+  // Set up state for polling
+  bleRouteIdx = idx;
+  bleRoutePointIdx = -1;  // -1 means send header next
+  bleRouteSending = true;
+  
+  RouteLog& r = routeLog[bleRouteIdx];
+  Serial.printf("[BLE] Route %d ready for polling (%d pts)\n", idx, r.count);
+  
+  // Send route header immediately
+  char hdr[128];
+  snprintf(hdr, sizeof(hdr),
+    "{\"type\":\"route_start\",\"route\":%d,\"total\":%d,\"name\":\"%s\",\"distM\":%.1f,\"startTime\":%lu}",
+    idx, r.count, r.name, r.distM, r.startTime);
+  pRouteChar->setValue(hdr); pRouteChar->notify();
+}
+
+// Called when webapp sends "NEXT" - send next point or route_end
+void bleSendNextRoutePoint() {
+  if (!bleRouteSending || bleRouteIdx < 0 || bleRouteIdx >= routeLogCount) {
+    char err[48];
+    snprintf(err, sizeof(err), "{\"type\":\"error\",\"msg\":\"no active transfer\"}");
+    pRouteChar->setValue(err); pRouteChar->notify();
+    return;
+  }
+  
+  RouteLog& r = routeLog[bleRouteIdx];
+  bleRoutePointIdx++;
+  
+  if (bleRoutePointIdx < r.count) {
+    // Send next point
+    char buf[96];
+    snprintf(buf, sizeof(buf),
+      "{\"i\":%d,\"t\":%lu,\"lat\":%.6f,\"lon\":%.6f,\"spd\":%.1f,\"alt\":%.1f}",
+      bleRoutePointIdx, r.points[bleRoutePointIdx].ms,
+      r.points[bleRoutePointIdx].lat, r.points[bleRoutePointIdx].lon,
+      r.points[bleRoutePointIdx].spd, r.points[bleRoutePointIdx].alt);
+    pRouteChar->setValue(buf); pRouteChar->notify();
+  } else {
+    // All points sent, send route_end
+    char ftr[48];
+    snprintf(ftr, sizeof(ftr), "{\"type\":\"route_end\",\"route\":%d}", bleRouteIdx);
+    pRouteChar->setValue(ftr); pRouteChar->notify();
+    Serial.printf("[BLE] Route %d complete\n", bleRouteIdx);
+    bleRouteSending = false;
+    bleRouteIdx = -1;
+    bleRoutePointIdx = -1;
+  }
 }
 
 // ============================================================
@@ -4381,7 +4741,7 @@ void apiHandleCmd() {
       setElevFt     = s[1] == 1;
       setTimeoutIdx = constrain(s[2], 0, 4);
       setBrightFull = s[3] == 1;
-      display.invertDisplay(!setBrightFull);
+      displayInvert(!setBrightFull);
       saveSettings();
     }
   } else if (body.startsWith("APMODE:")) {
@@ -4923,8 +5283,475 @@ void apiHandleMessages() {
   webServer.send(200, "application/json", json);
 }
 
+// ── Route API ───────────────────────────────────────────────────────────────
+// GET /api/routes — list all saved routes with summary stats
+void apiHandleRoutes() {
+  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  
+  String json = "{\"count\":" + String(routeLogCount) + ",\"routes\":[";
+  for (int i = 0; i < routeLogCount; i++) {
+    if (i > 0) json += ",";
+    RouteLog& r = routeLog[i];
+    
+    // Calculate stats from points
+    float minAlt = 9999, maxAlt = -9999, totalAlt = 0;
+    float maxSpd = 0, totalSpd = 0;
+    int movingPts = 0;
+    uint32_t durationMs = 0;
+    
+    if (r.count > 0) {
+      durationMs = r.points[r.count - 1].ms - r.points[0].ms;
+      for (int p = 0; p < r.count; p++) {
+        float alt = r.points[p].alt;
+        float spd = r.points[p].spd;
+        if (alt < minAlt) minAlt = alt;
+        if (alt > maxAlt) maxAlt = alt;
+        totalAlt += alt;
+        if (spd > maxSpd) maxSpd = spd;
+        if (spd > 0.5) { totalSpd += spd; movingPts++; }
+      }
+    }
+    
+    float avgAlt = r.count > 0 ? totalAlt / r.count : 0;
+    float avgSpd = movingPts > 0 ? totalSpd / movingPts : 0;
+    
+    char buf[320];
+    snprintf(buf, sizeof(buf),
+      "{\"idx\":%d,\"name\":\"%s\",\"startTime\":%lu,\"pts\":%d,\"distM\":%.1f,\"durMs\":%lu,"
+      "\"minAlt\":%.1f,\"maxAlt\":%.1f,\"avgAlt\":%.1f,"
+      "\"maxSpd\":%.2f,\"avgSpd\":%.2f}",
+      i, r.name, r.startTime, r.count, r.distM, durationMs,
+      r.count > 0 ? minAlt : 0, r.count > 0 ? maxAlt : 0, avgAlt,
+      maxSpd, avgSpd);
+    json += buf;
+  }
+  json += "]}";
+  
+  webServer.send(200, "application/json", json);
+}
+
+// GET /api/route?idx=N — full point data for route N (streamed for large routes)
+void apiHandleRoute() {
+  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  
+  if (!webServer.hasArg("idx")) {
+    webServer.send(400, "application/json", "{\"err\":\"missing idx\"}");
+    return;
+  }
+  
+  int idx = webServer.arg("idx").toInt();
+  if (idx < 0 || idx >= routeLogCount) {
+    webServer.send(404, "application/json", "{\"err\":\"route not found\"}");
+    return;
+  }
+  
+  RouteLog& r = routeLog[idx];
+  
+  // Build JSON with all points
+  // For large routes, this could be >50KB — use chunked response
+  String json = "{\"idx\":" + String(idx) + 
+                ",\"name\":\"" + String(r.name) + "\"" +
+                ",\"startTime\":" + String(r.startTime) +
+                ",\"pts\":" + String(r.count) + 
+                ",\"distM\":" + String(r.distM, 1) + ",\"points\":[";
+  
+  webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  webServer.send(200, "application/json", "");
+  webServer.sendContent(json);
+  
+  // Stream points in chunks to avoid memory issues
+  const int CHUNK_SIZE = 10;
+  String chunk = "";
+  
+  for (int p = 0; p < r.count; p++) {
+    if (p > 0) chunk += ",";
+    char buf[80];
+    snprintf(buf, sizeof(buf), "[%.6f,%.6f,%.2f,%.1f,%lu]",
+      r.points[p].lat, r.points[p].lon, r.points[p].spd, 
+      r.points[p].alt, r.points[p].ms);
+    chunk += buf;
+    
+    if ((p + 1) % CHUNK_SIZE == 0 || p == r.count - 1) {
+      webServer.sendContent(chunk);
+      chunk = "";
+      yield();  // Allow WiFi stack to process
+    }
+  }
+  
+  webServer.sendContent("]}");
+}
+
+// POST /api/route/rename — rename a route
+// Body: idx=N&name=NewName
+void apiHandleRouteRename() {
+  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  
+  if (!webServer.hasArg("idx") || !webServer.hasArg("name")) {
+    webServer.send(400, "application/json", "{\"err\":\"missing idx or name\"}");
+    return;
+  }
+  
+  int idx = webServer.arg("idx").toInt();
+  if (idx < 0 || idx >= routeLogCount) {
+    webServer.send(404, "application/json", "{\"err\":\"route not found\"}");
+    return;
+  }
+  
+  String newName = webServer.arg("name");
+  newName.trim();
+  if (newName.length() == 0 || newName.length() >= ROUTE_NAME_LEN) {
+    webServer.send(400, "application/json", "{\"err\":\"invalid name length\"}");
+    return;
+  }
+  
+  strncpy(routeLog[idx].name, newName.c_str(), ROUTE_NAME_LEN - 1);
+  routeLog[idx].name[ROUTE_NAME_LEN - 1] = 0;
+  
+  // Persist to flash
+  routeLogFlushAll();
+  
+  Serial.printf("[ROUTE] Renamed route %d to '%s'\n", idx, routeLog[idx].name);
+  webServer.send(200, "application/json", "{\"ok\":1}");
+}
+
+// POST /api/route/delete — delete a route
+// Body: idx=N
+void apiHandleRouteDelete() {
+  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  
+  if (!webServer.hasArg("idx")) {
+    webServer.send(400, "application/json", "{\"err\":\"missing idx\"}");
+    return;
+  }
+  
+  int idx = webServer.arg("idx").toInt();
+  if (idx < 0 || idx >= routeLogCount) {
+    webServer.send(404, "application/json", "{\"err\":\"route not found\"}");
+    return;
+  }
+  
+  // Free the route's points
+  if (routeLog[idx].points) {
+    free(routeLog[idx].points);
+    routeLog[idx].points = nullptr;
+  }
+  
+  // Shift remaining routes down
+  for (int i = idx; i < routeLogCount - 1; i++) {
+    routeLog[i] = routeLog[i + 1];
+  }
+  routeLogCount--;
+  
+  // Clear the last slot
+  routeLog[routeLogCount].points = nullptr;
+  routeLog[routeLogCount].count = 0;
+  routeLog[routeLogCount].distM = 0;
+  routeLog[routeLogCount].name[0] = 0;
+  routeLog[routeLogCount].startTime = 0;
+  
+  // Remove old files and re-persist
+  if (FFat.begin(false)) {
+    for (int i = 0; i < ROUTE_LOG_MAX; i++) {
+      char path[32];
+      snprintf(path, sizeof(path), "/route_%d.bin", i);
+      if (FFat.exists(path)) FFat.remove(path);
+    }
+  }
+  routeLogFlushAll();
+  
+  Serial.printf("[ROUTE] Deleted route %d, %d remaining\n", idx, routeLogCount);
+  webServer.send(200, "application/json", "{\"ok\":1,\"count\":" + String(routeLogCount) + "}");
+}
+
+// ── Routes Viewer Page ──────────────────────────────────────────────────────
+void handleRoutesPage() {
+  String html = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Azimuth Routes</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;padding:16px;min-height:100vh}
+h1{font-size:20px;color:#58a6ff;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+h1::before{content:'';display:inline-block;width:8px;height:8px;background:#238636;border-radius:50%}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:16px}
+.card h2{font-size:14px;color:#8b949e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px}
+.route-list{display:flex;flex-direction:column;gap:8px}
+.route-item{background:#21262d;border:1px solid #30363d;border-radius:6px;padding:12px;cursor:pointer;transition:all 0.2s}
+.route-item:hover{border-color:#58a6ff;background:#1c2128}
+.route-item.active{border-color:#238636;background:#1c2128}
+.route-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.route-num{font-weight:600;color:#f0f6fc}
+.route-dist{color:#3fb950;font-weight:500}
+.route-stats{display:flex;gap:16px;font-size:12px;color:#8b949e}
+.route-stat{display:flex;flex-direction:column;gap:2px}
+.route-stat .val{color:#c9d1d9}
+.empty{color:#484f58;text-align:center;padding:32px}
+#detail{display:none}
+#detail.show{display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px;margin-bottom:16px}
+.stat{text-align:center;background:#21262d;padding:12px;border-radius:6px}
+.stat .val{font-size:20px;font-weight:600;color:#f0f6fc}
+.stat .lbl{font-size:10px;color:#8b949e;text-transform:uppercase;margin-top:4px}
+#elev-chart{width:100%;height:120px;background:#21262d;border-radius:6px;position:relative;overflow:hidden}
+#elev-canvas{width:100%;height:100%}
+.back-btn{background:#30363d;color:#c9d1d9;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;margin-bottom:16px;font-size:13px}
+.back-btn:hover{background:#484f58}
+.ok{color:#3fb950}.warn{color:#d29922}
+#map-container{width:100%;height:200px;background:#21262d;border-radius:6px;position:relative;overflow:hidden;margin-bottom:16px}
+#map-canvas{width:100%;height:100%}
+.export-btn{background:#238636;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:13px;width:100%;margin-top:8px}
+.export-btn:hover{background:#2ea043}
+</style>
+</head>
+<body>
+<h1>Azimuth Routes</h1>
+
+<div id="list">
+<div class="card">
+<h2>Saved Routes</h2>
+<div class="route-list" id="routes">
+<div class="empty">Loading...</div>
+</div>
+</div>
+</div>
+
+<div id="detail">
+<button class="back-btn" onclick="showList()">&larr; Back to list</button>
+<div class="card">
+<h2 id="detail-title">Route Details</h2>
+<div class="grid" id="stats"></div>
+<div id="map-container"><canvas id="map-canvas"></canvas></div>
+<div id="elev-chart"><canvas id="elev-canvas"></canvas></div>
+<button class="export-btn" onclick="exportGPX()">Export as GPX</button>
+</div>
+</div>
+
+<script>
+let routes=[];
+let currentRoute=null;
+let routePoints=[];
+
+function fmt(ms){
+  let s=Math.floor(ms/1000);
+  if(s<60)return s+'s';
+  if(s<3600)return Math.floor(s/60)+'m '+s%60+'s';
+  return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m';
+}
+function fmtDist(m){return m>=1000?(m/1000).toFixed(2)+' km':Math.round(m)+' m';}
+function fmtSpd(mps){return (mps*3.6).toFixed(1)+' km/h';}
+function fmtAlt(m){return Math.round(m)+' m';}
+
+async function loadRoutes(){
+  try{
+    const r=await fetch('/api/routes');
+    const d=await r.json();
+    routes=d.routes;
+    renderList();
+  }catch(e){
+    document.getElementById('routes').innerHTML='<div class="empty">Failed to load routes</div>';
+  }
+}
+
+function renderList(){
+  const el=document.getElementById('routes');
+  if(routes.length===0){
+    el.innerHTML='<div class="empty">No saved routes</div>';
+    return;
+  }
+  el.innerHTML=routes.map((r,i)=>
+    '<div class="route-item" onclick="viewRoute('+i+')">'+
+    '<div class="route-header">'+
+    '<span class="route-num">Route '+(i+1)+'</span>'+
+    '<span class="route-dist">'+fmtDist(r.distM)+'</span>'+
+    '</div>'+
+    '<div class="route-stats">'+
+    '<div class="route-stat"><span class="lbl">Points</span><span class="val">'+r.pts+'</span></div>'+
+    '<div class="route-stat"><span class="lbl">Duration</span><span class="val">'+fmt(r.durMs)+'</span></div>'+
+    '<div class="route-stat"><span class="lbl">Max Speed</span><span class="val">'+fmtSpd(r.maxSpd)+'</span></div>'+
+    '<div class="route-stat"><span class="lbl">Elevation</span><span class="val">'+fmtAlt(r.minAlt)+'-'+fmtAlt(r.maxAlt)+'</span></div>'+
+    '</div></div>'
+  ).join('');
+}
+
+async function viewRoute(idx){
+  currentRoute=routes[idx];
+  document.getElementById('detail-title').textContent='Route '+(idx+1);
+  document.getElementById('stats').innerHTML=
+    '<div class="stat"><div class="val">'+fmtDist(currentRoute.distM)+'</div><div class="lbl">Distance</div></div>'+
+    '<div class="stat"><div class="val">'+fmt(currentRoute.durMs)+'</div><div class="lbl">Duration</div></div>'+
+    '<div class="stat"><div class="val">'+fmtSpd(currentRoute.avgSpd)+'</div><div class="lbl">Avg Speed</div></div>'+
+    '<div class="stat"><div class="val">'+fmtSpd(currentRoute.maxSpd)+'</div><div class="lbl">Max Speed</div></div>'+
+    '<div class="stat"><div class="val">'+fmtAlt(currentRoute.minAlt)+'</div><div class="lbl">Min Elev</div></div>'+
+    '<div class="stat"><div class="val">'+fmtAlt(currentRoute.maxAlt)+'</div><div class="lbl">Max Elev</div></div>';
+  
+  document.getElementById('list').style.display='none';
+  document.getElementById('detail').classList.add('show');
+  
+  // Load full route data
+  try{
+    const r=await fetch('/api/route?idx='+idx);
+    const d=await r.json();
+    routePoints=d.points;
+    drawMap();
+    drawElevation();
+  }catch(e){console.error('Failed to load route',e);}
+}
+
+function showList(){
+  document.getElementById('list').style.display='block';
+  document.getElementById('detail').classList.remove('show');
+  routePoints=[];
+}
+
+function drawMap(){
+  const canvas=document.getElementById('map-canvas');
+  const ctx=canvas.getContext('2d');
+  canvas.width=canvas.offsetWidth*2;
+  canvas.height=canvas.offsetHeight*2;
+  ctx.scale(2,2);
+  
+  if(routePoints.length<2)return;
+  
+  // Find bounds
+  let minLat=90,maxLat=-90,minLon=180,maxLon=-180;
+  routePoints.forEach(p=>{
+    if(p[0]<minLat)minLat=p[0];
+    if(p[0]>maxLat)maxLat=p[0];
+    if(p[1]<minLon)minLon=p[1];
+    if(p[1]>maxLon)maxLon=p[1];
+  });
+  
+  const pad=20;
+  const w=canvas.offsetWidth-pad*2;
+  const h=canvas.offsetHeight-pad*2;
+  const latRange=maxLat-minLat||0.0001;
+  const lonRange=maxLon-minLon||0.0001;
+  
+  function proj(lat,lon){
+    return [pad+(lon-minLon)/lonRange*w, pad+(maxLat-lat)/latRange*h];
+  }
+  
+  ctx.strokeStyle='#238636';
+  ctx.lineWidth=2;
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  ctx.beginPath();
+  
+  routePoints.forEach((p,i)=>{
+    const [x,y]=proj(p[0],p[1]);
+    if(i===0)ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  
+  // Start/end markers
+  const [sx,sy]=proj(routePoints[0][0],routePoints[0][1]);
+  const [ex,ey]=proj(routePoints[routePoints.length-1][0],routePoints[routePoints.length-1][1]);
+  ctx.fillStyle='#3fb950';
+  ctx.beginPath();ctx.arc(sx,sy,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#f85149';
+  ctx.beginPath();ctx.arc(ex,ey,5,0,Math.PI*2);ctx.fill();
+}
+
+function drawElevation(){
+  const canvas=document.getElementById('elev-canvas');
+  const ctx=canvas.getContext('2d');
+  canvas.width=canvas.offsetWidth*2;
+  canvas.height=canvas.offsetHeight*2;
+  ctx.scale(2,2);
+  
+  if(routePoints.length<2)return;
+  
+  const alts=routePoints.map(p=>p[3]);
+  const minA=Math.min(...alts);
+  const maxA=Math.max(...alts);
+  const range=maxA-minA||1;
+  
+  const pad=10;
+  const w=canvas.offsetWidth-pad*2;
+  const h=canvas.offsetHeight-pad*2;
+  
+  // Fill gradient
+  const grad=ctx.createLinearGradient(0,pad,0,h+pad);
+  grad.addColorStop(0,'rgba(35,134,54,0.3)');
+  grad.addColorStop(1,'rgba(35,134,54,0)');
+  
+  ctx.beginPath();
+  ctx.moveTo(pad,h+pad);
+  alts.forEach((a,i)=>{
+    const x=pad+i/(alts.length-1)*w;
+    const y=pad+h-(a-minA)/range*h;
+    ctx.lineTo(x,y);
+  });
+  ctx.lineTo(pad+w,h+pad);
+  ctx.closePath();
+  ctx.fillStyle=grad;
+  ctx.fill();
+  
+  // Line
+  ctx.strokeStyle='#238636';
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  alts.forEach((a,i)=>{
+    const x=pad+i/(alts.length-1)*w;
+    const y=pad+h-(a-minA)/range*h;
+    if(i===0)ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  
+  // Labels
+  ctx.fillStyle='#8b949e';
+  ctx.font='10px sans-serif';
+  ctx.textAlign='left';
+  ctx.fillText(Math.round(maxA)+'m',2,pad+8);
+  ctx.fillText(Math.round(minA)+'m',2,h+pad-2);
+}
+
+function exportGPX(){
+  if(routePoints.length===0)return;
+  
+  let gpx='<?xml version="1.0" encoding="UTF-8"?>\\n'+
+    '<gpx version="1.1" creator="Azimuth">\\n'+
+    '<trk><name>Route</name><trkseg>\\n';
+  
+  routePoints.forEach(p=>{
+    gpx+='<trkpt lat="'+p[0]+'" lon="'+p[1]+'"><ele>'+p[3]+'</ele></trkpt>\\n';
+  });
+  
+  gpx+='</trkseg></trk></gpx>';
+  
+  const blob=new Blob([gpx],{type:'application/gpx+xml'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='route.gpx';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+loadRoutes();
+</script>
+</body>
+</html>
+)rawliteral";
+  webServer.send(200, "text/html", html);
+}
+
 void apStart() {
   if (apEnabled) return;
+  
+  // Stop BLE advertising to free stack space for WiFi
+  // (Running both simultaneously can cause nimble_host stack overflow)
+  if (pServer) {
+    NimBLEDevice::stopAdvertising();
+    Serial.println("[AP] BLE advertising stopped (WiFi coexistence)");
+  }
+  
   // Build SSID from device name
   const char* rawName = bleDeviceName;
   if (strncmp(rawName, "Azimuth-", 8) == 0) rawName += 8;
@@ -4962,6 +5789,12 @@ void apStart() {
   webServer.on("/status", HTTP_GET, handleStatusPage);
   // Config portal (full device setup via browser)
   webServer.on("/config", HTTP_GET, handleConfigPage);
+  // Routes viewer page
+  webServer.on("/routes", HTTP_GET, handleRoutesPage);
+  webServer.on("/api/routes", HTTP_GET, apiHandleRoutes);
+  webServer.on("/api/route", HTTP_GET, apiHandleRoute);
+  webServer.on("/api/route/rename", HTTP_POST, apiHandleRouteRename);
+  webServer.on("/api/route/delete", HTTP_POST, apiHandleRouteDelete);
   webServer.onNotFound(webServerHandleNotFound);
   webServer.begin();
   // mDNS — device accessible at azimuth.local
@@ -4989,6 +5822,13 @@ void apStop() {
   prefs.putBool("apEnabled", false);
   prefs.end();
   Serial.println("[AP] Stopped");
+  
+  // Resume BLE advertising now that WiFi is off
+  if (pServer) {
+    NimBLEDevice::startAdvertising();
+    Serial.println("[AP] BLE advertising resumed");
+  }
+  
   oledDraw();
 }
 
@@ -5005,6 +5845,32 @@ uint32_t timeoutMs() {
 // COMPASS ROSE DRAW (shared by splash and page)
 // ============================================================
 void drawCompassRose(int cx, int cy, int cr) {
+#ifdef BOARD_WIRELESS_TRACKER
+  // TFT: Terrain colour scheme
+  display.drawCircle(cx, cy, cr,   COL_TEXT_PRI);
+  display.drawCircle(cx, cy, cr-6, COL_TEXT_SEC);
+  display.drawCircle(cx, cy, 3,    COL_FOREST);
+  // Cardinal tick marks
+  display.drawLine(cx, cy-cr,   cx, cy-cr+8, COL_TEXT_PRI);
+  display.drawLine(cx, cy+cr,   cx, cy+cr-8, COL_TEXT_PRI);
+  display.drawLine(cx-cr, cy,   cx-cr+8, cy, COL_TEXT_PRI);
+  display.drawLine(cx+cr, cy,   cx+cr-8, cy, COL_TEXT_PRI);
+  // Intercardinal tick marks
+  int td = (int)(cr * 0.707);
+  display.drawLine(cx-td,cy-td, cx-td+5,cy-td+5, COL_TEXT_SEC);
+  display.drawLine(cx+td,cy-td, cx+td-5,cy-td+5, COL_TEXT_SEC);
+  display.drawLine(cx-td,cy+td, cx-td+5,cy+td-5, COL_TEXT_SEC);
+  display.drawLine(cx+td,cy+td, cx+td-5,cy+td-5, COL_TEXT_SEC);
+  // Cardinal labels
+  display.setTextSize(1);
+  display.setTextColor(COL_RED);  // North in red
+  display.setCursor(cx-3, cy-cr-9); display.print("N");
+  display.setTextColor(COL_TEXT_PRI);
+  display.setCursor(cx-3, cy+cr+2); display.print("S");
+  display.setCursor(cx-cr-8, cy-4); display.print("W");
+  display.setCursor(cx+cr+2, cy-4); display.print("E");
+#else
+  // OLED: Original white design
   display.drawCircle(cx, cy, cr,   SSD1306_WHITE);
   display.drawCircle(cx, cy, cr-6, SSD1306_WHITE);
   display.drawCircle(cx, cy, 3,    SSD1306_WHITE);
@@ -5023,6 +5889,7 @@ void drawCompassRose(int cx, int cy, int cr) {
   display.setCursor(cx-3, cy+cr+2); display.print("S");
   display.setCursor(cx-cr-8, cy-4); display.print("W");
   display.setCursor(cx+cr+2, cy-4); display.print("E");
+#endif
 }
 
 void drawCompassFrame(int cx, int cy, int cr, float deg) {
@@ -5034,11 +5901,17 @@ void drawCompassFrame(int cx, int cy, int cr, float deg) {
   int by   = cy-(int)(sin(rad)*(cr*0.55));
   int wx   = (int)(cos(perp)*3);
   int wy   = (int)(sin(perp)*3);
-  display.clearDisplay();
+  displayClear();
   drawCompassRose(cx, cy, cr);
+#ifdef BOARD_WIRELESS_TRACKER
+  // TFT: Red needle (north indicator)
+  display.fillTriangle(tipX,tipY, cx+wx,cy+wy, cx-wx,cy-wy, COL_RED);
+  display.drawTriangle(bx,by,     cx+wx,cy+wy, cx-wx,cy-wy, COL_TEXT_SEC);
+#else
   display.fillTriangle(tipX,tipY, cx+wx,cy+wy, cx-wx,cy-wy, SSD1306_WHITE);
   display.drawTriangle(bx,by,     cx+wx,cy+wy, cx-wx,cy-wy, SSD1306_WHITE);
-  display.display();
+#endif
+  displayFlush();
 }
 
 // ============================================================
@@ -5122,9 +5995,9 @@ void drawTitleFinal() {
   
   display.setTextSize(1);
   display.setCursor(versionX, textY + 18);
-  display.print("OEO v3.17");
+  display.print("OEO v3.18");
   
-  display.display();
+  displayFlush();
 }
 
 void drawTitleScreen() {
@@ -5132,18 +6005,111 @@ void drawTitleScreen() {
 }
 
 void showSplashCompass() {
-  const int cx=64, cy=33, cr=21;
-  for (int i=0; i<9; i++) {
-    drawCompassFrame(cx, cy, cr, i*45.0);
+  const int cx = SCREEN_W / 2;
+  const int cy = SCREEN_H / 2;
+  const int cr = min(SCREEN_W, SCREEN_H) / 3;  // Scale to screen size
+#ifdef BOARD_WIRELESS_TRACKER
+  // Smoother animation for TFT - more steps, shorter delay
+  for (int i = 0; i <= 24; i++) {
+    drawCompassFrame(cx, cy, cr, i * 15.0);  // 15° steps = smoother
+    delay(120);
+  }
+#else
+  for (int i = 0; i < 9; i++) {
+    drawCompassFrame(cx, cy, cr, i * 45.0);
     delay(450);
   }
+#endif
 }
 
 void showSplashTitle() {
-  display.clearDisplay();
-  display.display();
+  displayClear();
+  displayFlush();
   delay(150);
   
+#ifdef BOARD_WIRELESS_TRACKER
+  // TFT splash: Black background, green mountains, text inside mountain area
+  // Screen is 160x80
+  
+  // Mountain peak coordinates scaled for 160px width
+  const int tftMtPeakX[] = {0, 12, 25, 40, 55, 70, 85, 102, 120, 135, 150, 160};
+  const float tftMtPeakH[] = {0, 0.56, 0.25, 1.0, 0.44, 0.81, 0.38, 0.94, 0.5, 0.75, 0.31, 0.5};
+  const int tftMtPeakCount = 12;
+  const int mtBaseY = 80;   // Bottom of screen
+  const int mtHeight = 75;  // Very tall mountains (almost full screen)
+  
+  // Helper to draw full scene
+  auto drawMountainScene = [&]() {
+    display.fillScreen(0x0000);  // Black background
+    // Draw forest green mountains
+    for (int m = 0; m < tftMtPeakCount - 1; m++) {
+      int x0 = tftMtPeakX[m];
+      int y0 = mtBaseY - (int)(mtHeight * tftMtPeakH[m]);
+      int x1 = tftMtPeakX[m + 1];
+      int y1 = mtBaseY - (int)(mtHeight * tftMtPeakH[m + 1]);
+      display.fillTriangle(x0, y0, x1, y1, x1, SCREEN_H, COL_FOREST);
+      display.fillTriangle(x0, y0, x0, SCREEN_H, x1, SCREEN_H, COL_FOREST);
+    }
+    // White ridge line
+    for (int m = 0; m < tftMtPeakCount - 1; m++) {
+      int y0 = mtBaseY - (int)(mtHeight * tftMtPeakH[m]);
+      int y1 = mtBaseY - (int)(mtHeight * tftMtPeakH[m + 1]);
+      display.drawLine(tftMtPeakX[m], y0, tftMtPeakX[m + 1], y1, COL_TEXT_PRI);
+    }
+  };
+  
+  // Draw static mountain scene first
+  drawMountainScene();
+  displayFlush();
+  delay(400);
+  
+  // Text slides up from bottom - smaller sizes to fit within mountains
+  // AZIMUTH size 2 = 12px wide per char, 7 chars = 84px, height ~16px
+  // OEO v3.18 size 1 = 6px wide per char, 9 chars = 54px, height ~8px
+  const int azW = 84;
+  const int azH = 16;
+  const int verW = 54;
+  const int azX = (SCREEN_W - azW) / 2;
+  const int verX = (SCREEN_W - verW) / 2;
+  const int finalAzY = 28;           // Position within mountain area
+  const int finalVerY = finalAzY + azH + 4;
+  
+  const int wipeSteps = 14;
+  const int wipeDelay = 40;
+  
+  for (int i = 0; i <= wipeSteps; i++) {
+    float progress = (float)i / wipeSteps;
+    float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
+    int currentAzY = SCREEN_H - (int)((SCREEN_H - finalAzY) * eased);
+    int currentVerY = currentAzY + azH + 4;
+    
+    // Redraw scene
+    drawMountainScene();
+    
+    // Draw AZIMUTH in blue (size 2)
+    display.setTextSize(2);
+    display.setTextColor(COL_BLUE);
+    display.setCursor(azX, currentAzY);
+    display.print("AZIMUTH");
+    
+    // Draw OEO v3.18 in amber
+    if (currentVerY < SCREEN_H - 4) {
+      display.setTextSize(1);
+      display.setTextColor(COL_AMBER);
+      display.setCursor(verX, currentVerY);
+      display.print("OEO v3.18");
+    }
+    
+    displayFlush();
+    delay(wipeDelay);
+  }
+  
+  // Hold final frame
+  delay(2000);
+  display.setTextSize(1);
+  
+#else
+  // Animated splash for OLED (128x64 mono)
   const int mtBaseY = 52;
   const int mtHeight = 35;
   
@@ -5155,7 +6121,7 @@ void showSplashTitle() {
     display.fillScreen(SSD1306_WHITE);
     display.setTextColor(SSD1306_BLACK);
     drawMountains(mtBaseY + yOffset, mtHeight);
-    display.display();
+    displayFlush();
     delay(scrollDelay);
   }
   
@@ -5201,22 +6167,29 @@ void showSplashTitle() {
     if (currentY >= 10) {
       display.setTextSize(1);
       display.setCursor(versionX, currentY + 18);
-      display.print("OEO v3.17");
+      display.print("OEO v3.18");
     }
     
-    display.display();
+    displayFlush();
     delay(wipeDelay);
   }
   
   // Hold final frame
   delay(2500);
   display.setTextSize(1);
+#endif
 }
 
 void showSplash() {
-  display.clearDisplay(); display.display();
+  displayClear(); displayFlush();
+#ifdef BOARD_WIRELESS_TRACKER
+  // TFT: Skip compass animation, go straight to mountain/title
+  showSplashTitle();
+#else
+  // OLED: Keep both splash screens
   showSplashCompass();
   showSplashTitle();
+#endif
 }
 
 // ============================================================
@@ -5224,21 +6197,31 @@ void showSplash() {
 // ============================================================
 void drawNavDots() {
   int total = pageCount();
-  int dotW  = 5, gap = 2;
-  int rowW  = total*(dotW+gap)-gap;
-  int startX = (128-rowW)/2;
-  int y = 58;
-  for (int i=0; i<total; i++) {
-    int x = startX + i*(dotW+gap);
-    if (i == currentPage) display.fillRect(x, y, dotW, dotW, SSD1306_WHITE);
-    else                  display.drawRect(x, y, dotW, dotW, SSD1306_WHITE);
+  int dotR  = 2;  // radius for round dots
+  int gap   = 6;  // gap between dot centers
+  int rowW  = total * gap - gap + dotR * 2;
+  int startX = (SCREEN_W - rowW) / 2 + dotR;
+  int y = SCREEN_H - 5;  // 5 pixels from bottom (center of dot)
+  for (int i = 0; i < total; i++) {
+    int cx = startX + i * gap;
+#ifdef BOARD_WIRELESS_TRACKER
+    if (i == currentPage) {
+      display.fillCircle(cx, y, dotR, COL_NAV_ACTIVE);
+    } else {
+      display.drawCircle(cx, y, dotR, COL_NAV_IDLE);
+    }
+#else
+    if (i == currentPage) display.fillCircle(cx, y, dotR, SSD1306_WHITE);
+    else                  display.drawCircle(cx, y, dotR, SSD1306_WHITE);
+#endif
   }
 }
 
 // ============================================================
 // PAGE TRANSITIONS
 // ============================================================
-// Buffer to store current screen for transitions
+#ifndef BOARD_WIRELESS_TRACKER
+// OLED slide transitions using frame buffer
 uint8_t screenBuffer[128 * 64 / 8];
 
 void captureScreen() {
@@ -5269,7 +6252,7 @@ void slideToPage(int newPage, bool slideLeft) {
   currentPage = newPage;
   
   // Render new page to get its content
-  display.clearDisplay();
+  displayClear();
   oledDrawPage();
   uint8_t newBuffer[128 * 64 / 8];
   memcpy(newBuffer, display.getBuffer(), sizeof(newBuffer));
@@ -5284,7 +6267,7 @@ void slideToPage(int newPage, bool slideLeft) {
     float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
     int offset = (int)(128 * eased);
     
-    display.clearDisplay();
+    displayClear();
     
     if (slideLeft) {
       // Old page slides left (negative offset), new slides in from right
@@ -5334,14 +6317,14 @@ void slideToPage(int newPage, bool slideLeft) {
       }
     }
     
-    display.display();
+    displayFlush();
     delay(stepDelay);
   }
   
   // Final frame — ensure clean render
-  display.clearDisplay();
+  displayClear();
   oledDrawPage();
-  display.display();
+  displayFlush();
 }
 
 void nextPage() {
@@ -5354,6 +6337,25 @@ void prevPage() {
   slideToPage(newPage, false);  // slide right
 }
 
+#else
+// TFT instant page switch (no buffer access)
+void oledDrawPage();  // Forward declaration
+
+void nextPage() {
+  currentPage = (currentPage + 1) % pageCount();
+  displayClear();
+  oledDrawPage();
+  displayFlush();
+}
+
+void prevPage() {
+  currentPage = (currentPage - 1 + pageCount()) % pageCount();
+  displayClear();
+  oledDrawPage();
+  displayFlush();
+}
+#endif
+
 // ============================================================
 // PAGE DRAWS
 // ============================================================
@@ -5361,7 +6363,20 @@ void prevPage() {
 void drawPageGPS() {
   char buf[32];
 
-  // Battery top-right — moved 4px right
+#ifdef BOARD_WIRELESS_TRACKER
+  // Battery top-right corner with padding
+  char batBuf[8];
+  if (batOnUSB)
+    snprintf(batBuf, sizeof(batBuf), "USB");
+  else if (batCharging)
+    snprintf(batBuf, sizeof(batBuf), "+%d%%", batPercent);
+  else
+    snprintf(batBuf, sizeof(batBuf), "%d%%", batPercent);
+  // Position: percentage ends at x=138, icon at x=140-154, leaves ~4px right margin
+  display.setCursor(118, 1); display.print(batBuf);
+  drawBatIcon(140, 1, batPercent);
+#else
+  // OLED battery position
   char batBuf[8];
   if (batOnUSB)
     snprintf(batBuf, sizeof(batBuf), "USB");
@@ -5371,14 +6386,74 @@ void drawPageGPS() {
     snprintf(batBuf, sizeof(batBuf), "%d%%", batPercent);
   display.setCursor(87, 1); display.print(batBuf);
   drawBatIcon(111, 1, batPercent);
+#endif
 
   if (!cachedFix) {
     // ── No fix — map pin with expanding signal arcs ──
-    const int cx = 63;   // horizontal centre
+#ifdef BOARD_WIRELESS_TRACKER
+    const int cx = SCREEN_W / 2;  // Centre horizontally (80)
+    const int py = 34;            // Pin centre y (moved up)
+    const int pr = 12;            // Pin circle radius (larger)
+    const int ptail = 8;          // Length of tail
+    
+    // Forest green pin (always green, even when acquiring)
+    display.fillCircle(cx, py, pr, COL_FOREST);
+    display.fillTriangle(
+      cx - pr + 3, py + pr - 3,
+      cx + pr - 3, py + pr - 3,
+      cx,          py + pr + ptail,
+      COL_FOREST
+    );
+    // White inner circle (the hole in the pin)
+    const int ir = 6;
+    display.fillCircle(cx, py, ir, COL_TEXT_PRI);
 
-    // ── Map pin ──
-    // Pin body: circle top, teardrop point at bottom
-    // Circle centre at (cx, py), radius pr, point at (cx, py + pr + ptail)
+    // Signal arcs in Amber (acquiring state)
+    const int ax = cx;
+    const int ay = py - pr;
+    uint8_t arcPhase = (millis() / 350) % 4;
+
+    if (arcPhase >= 1) {
+      for (int deg = 200; deg <= 340; deg += 4) {
+        float r = deg * M_PI / 180.0f;
+        int apx = ax + (int)(10 * cosf(r));
+        int apy = ay + (int)(10 * sinf(r));
+        if (apx >= 0 && apx < SCREEN_W && apy >= 0 && apy < SCREEN_H - 12) 
+          display.drawPixel(apx, apy, COL_AMBER);
+      }
+    }
+    if (arcPhase >= 2) {
+      for (int deg = 207; deg <= 333; deg += 3) {
+        float r = deg * M_PI / 180.0f;
+        int apx = ax + (int)(16 * cosf(r));
+        int apy = ay + (int)(16 * sinf(r));
+        if (apx >= 0 && apx < SCREEN_W && apy >= 0 && apy < SCREEN_H - 12) 
+          display.drawPixel(apx, apy, COL_AMBER);
+      }
+    }
+    if (arcPhase >= 3) {
+      for (int deg = 212; deg <= 328; deg += 3) {
+        float r = deg * M_PI / 180.0f;
+        int apx = ax + (int)(22 * cosf(r));
+        int apy = ay + (int)(22 * sinf(r));
+        if (apx >= 0 && apx < SCREEN_W && apy >= 0 && apy < SCREEN_H - 12) 
+          display.drawPixel(apx, apy, COL_AMBER);
+      }
+    }
+
+    // No header line for cleaner look
+
+    // "Acquiring Signal" text centred
+    display.setTextColor(COL_TEXT_PRI);
+    int textW = 96;  // "Acquiring Signal" ~16 chars × 6px
+    display.setCursor((SCREEN_W - textW) / 2, SCREEN_H - 20);
+    display.print("Acquiring Signal");
+    uint8_t dots = (millis() / 500) % 3 + 1;
+    for (uint8_t d = 0; d < dots; d++) display.print(".");
+
+#else
+    // OLED: Original design
+    const int cx = 63;   // horizontal centre
     const int py   = 30;  // pin circle centre y
     const int pr   = 9;   // pin circle radius
     const int ptail = 6;  // length of tail below circle bottom
@@ -5387,7 +6462,6 @@ void drawPageGPS() {
     display.fillCircle(cx, py, pr, SSD1306_WHITE);
 
     // Filled triangle for the tail (teardrop point)
-    // Triangle: left=(cx-pr+2, py+pr-2), right=(cx+pr-2, py+pr-2), tip=(cx, py+pr+ptail)
     display.fillTriangle(
       cx - pr + 2, py + pr - 2,
       cx + pr - 2, py + pr - 2,
@@ -5399,10 +6473,9 @@ void drawPageGPS() {
     const int ir = 6;
     display.fillCircle(cx, py, ir, SSD1306_BLACK);
 
-    // ── Signal arcs expanding upward from pin circle top ──
-    // Arc origin = top of pin circle
+    // Signal arcs expanding upward from pin circle top
     const int ax = cx;
-    const int ay = py - pr;   // top of pin circle
+    const int ay = py - pr;
     uint8_t arcPhase = (millis() / 350) % 4;
 
     if (arcPhase >= 1) {
@@ -5435,13 +6508,18 @@ void drawPageGPS() {
     display.print("Acquiring Signal");
     uint8_t dots = (millis() / 500) % 3 + 1;
     for (uint8_t d = 0; d < dots; d++) display.print(".");
+#endif
 
   } else {
     // ── Fix acquired — Position page ────────────────────────────
     // Header — crosshair icon + title + shortened divider (stops before battery)
     display.drawBitmap(2, 1, ICON_CRS2, 8, 8, SSD1306_WHITE);
     display.setCursor(13, 1); display.println("Position");
-    display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+#ifdef BOARD_WIRELESS_TRACKER
+    display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, COL_FOREST);  // Green = fix acquired
+#else
+    display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
+#endif
 
     // Data rows
     display.drawBitmap(2, 13, ICON_GPS, 8, 8, SSD1306_WHITE);
@@ -5475,13 +6553,13 @@ void drawPageGPS() {
 }
 
 // ── Hidden About screen — triggered by long press on Device Information ──────
-#define FW_VERSION  "v3.17"
+#define FW_VERSION  "v3.18"
 #define FW_BUILD    "Apr 2026"
 #define OEO_WEB     "oeo.dev/azimuth"
 #define OEO_COPY    "2026 OEO"
 
 void drawAboutScreen() {
-  display.clearDisplay();
+  displayClear();
   display.setTextColor(SSD1306_WHITE);
   display.setTextSize(1);
 
@@ -5491,7 +6569,7 @@ void drawAboutScreen() {
   display.setCursor(2, 32); display.println(OEO_WEB);
   display.setCursor(2, 42); display.print("(c) "); display.println(OEO_COPY);
 
-  display.display();
+  displayFlush();
 }
 void drawPageInfo() {
   char buf[32];
@@ -5499,8 +6577,8 @@ void drawPageInfo() {
   // Header — cog icon + title + BLE connected indicator top-right
   display.drawBitmap(2, 1, ICON_COG, 8, 8, SSD1306_WHITE);
   display.setCursor(13, 1); display.println(bleDeviceName);
-  if (bleConnected) display.drawBitmap(119, 1, ICON_BT, 8, 8, SSD1306_WHITE);
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  if (bleConnected) display.drawBitmap(SCREEN_W - 9, 1, ICON_BT, 8, 8, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   // Row 1 — BLE PIN
   display.drawBitmap(2, 13, ICON_BT, 8, 8, SSD1306_WHITE);
@@ -5548,16 +6626,25 @@ void drawPageCompass() {
   // Header
   display.drawBitmap(2, 1, ICON_COMPASS, 8, 8, SSD1306_WHITE);
   display.setCursor(13, 1); display.println("Compass");
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
-  // Compass rose — resized cr=18, cy=38 (1px gap from header divider)
-  const int cx=30, cy=38, cr=18;
+  // Compass rose — left side, scaled to screen
+  // Center vertically in available space below header, leaving room for nav dots
+  const int availH = SCREEN_H - HEADER_LINE_Y - 12;  // 12px for nav dots at bottom
+  const int cx = SCREEN_W / 4;
+  const int cy = HEADER_LINE_Y + 6 + availH / 2;  // +6 to leave room for N label
+  const int cr = min(SCREEN_W / 4 - 4, availH / 2 - 4);  // Slightly smaller to fit labels
+  
   display.drawCircle(cx,cy,cr,SSD1306_WHITE);
   display.drawLine(cx,cy-cr,   cx,cy-cr+4,   SSD1306_WHITE);
   display.drawLine(cx,cy+cr,   cx,cy+cr-4,   SSD1306_WHITE);
   display.drawLine(cx-cr,cy,   cx-cr+4,cy,   SSD1306_WHITE);
   display.drawLine(cx+cr,cy,   cx+cr-4,cy,   SSD1306_WHITE);
-  display.setCursor(cx-2,cy-cr-7); display.println("N");
+  
+  // Cardinal labels — ensure N stays below header line
+  int nY = cy - cr - 7;
+  if (nY < HEADER_LINE_Y + 2) nY = HEADER_LINE_Y + 2;
+  display.setCursor(cx-2, nY); display.println("N");
   display.setCursor(cx-2,cy+cr+1); display.println("S");
   display.setCursor(cx-cr-6,cy-3); display.println("W");
   display.setCursor(cx+cr+2,cy-3); display.println("E");
@@ -5566,21 +6653,23 @@ void drawPageCompass() {
   else { display.setCursor(cx-4,cy-3); display.println("--"); }
 
   // Vertical divider — starts below header line
-  display.drawLine(62, 11, 62, 63, SSD1306_WHITE);
+  const int divX = SCREEN_W / 2 - 2;
+  display.drawLine(divX, HEADER_LINE_Y + 1, divX, SCREEN_H - 1, SSD1306_WHITE);
 
-  // Right panel — all items shifted +1px down, +2px right (x=67)
+  // Right panel — data display
+  const int rpX = SCREEN_W / 2 + 5;  // Right panel X start
   char buf[16];
   if (cachedFix && cachedSpd > 1.5) {
     snprintf(buf, sizeof(buf), "HDG:%.0f", cachedHdg);
-    display.setCursor(67, 15); display.println(buf);
+    display.setCursor(rpX, 15); display.println(buf);
     snprintf(buf, sizeof(buf), "BRG:%s", getCardinal(cachedHdg));
-    display.setCursor(67, 25); display.println(buf);
+    display.setCursor(rpX, 25); display.println(buf);
     snprintf(buf, sizeof(buf), "SPD:%.1f", displaySpd(cachedSpd));
-    display.setCursor(67, 35); display.println(buf);
+    display.setCursor(rpX, 35); display.println(buf);
   } else {
-    display.setCursor(67, 15); display.println("HDG:---");
-    display.setCursor(67, 25); display.println("BRG:---");
-    display.setCursor(67, 35); display.println("SPD:---");
+    display.setCursor(rpX, 15); display.println("HDG:---");
+    display.setCursor(rpX, 25); display.println("BRG:---");
+    display.setCursor(rpX, 35); display.println("SPD:---");
   }
   // 4th row: DST to saved location if saved, else SAT count
   if (locSaved) {
@@ -5589,10 +6678,10 @@ void drawPageCompass() {
       snprintf(buf, sizeof(buf), "WPT:%.1fk", dst/1000.0);
     else
       snprintf(buf, sizeof(buf), "WPT:%.0fm", dst);
-    display.setCursor(67, 45); display.println(buf);
+    display.setCursor(rpX, 45); display.println(buf);
   } else {
     snprintf(buf, sizeof(buf), "SAT:%u", cachedSats);
-    display.setCursor(67, 45); display.println(buf);
+    display.setCursor(rpX, 45); display.println(buf);
   }
 
   // Nav dots — small, right-aligned in right panel
@@ -5600,19 +6689,21 @@ void drawPageCompass() {
     int total = pageCount();
     const int dotW = 3, gap = 2;
     int rowW = total*(dotW+gap)-gap;
-    int startX = 127 - rowW;
-    int y = 59;
+    int startX = SCREEN_MAX_X - rowW;
+    int y = SCREEN_H - 5;
     for (int i = 0; i < total; i++) {
       int x = startX + i*(dotW+gap);
-      if (x < 64) continue;  // stay in right panel only
+      if (x < SCREEN_W / 2) continue;  // stay in right panel only
       if (i == currentPage) display.fillRect(x, y, dotW, dotW, SSD1306_WHITE);
       else                  display.drawRect(x, y, dotW, dotW, SSD1306_WHITE);
     }
   }}
 
 void drawPageNavigate() {
-  // Compass on RIGHT side — cx=97, cy=32, cr=24, divider at x=62
-  const int cx=97, cy=32, cr=24;
+  // Compass on RIGHT side — centered in right half of screen
+  const int cx = SCREEN_W * 3 / 4;  // 3/4 across screen
+  const int cy = SCREEN_H / 2;
+  const int cr = min(SCREEN_W / 4, SCREEN_H / 2) - 8;  // Scale to fit
 
   // Determine target — waypoints take priority over saved location
   bool hasTarget = false;
@@ -5712,7 +6803,7 @@ void drawPageGroups() {
     display.setCursor(0, 28);
     display.print("Via: ");
     display.println(pendingKeyShare.leaderName);
-    display.setCursor(0, OLED_HINT_Y);
+    display.setCursor(0, DISPLAY_HINT_Y);
     display.println("Hld:Join Dbl:No");
     return;
   }
@@ -5734,7 +6825,7 @@ void drawPageGroups() {
     display.print("Elapsed: ");
     display.print(elapsed);
     display.println("s");
-    display.setCursor(0, OLED_HINT_Y);
+    display.setCursor(0, DISPLAY_HINT_Y);
     display.println("Lng:Done Dbl:Cancel");
     return;
   }
@@ -5790,7 +6881,7 @@ void drawPageGroups() {
     for (int i = 0; i < menuCount && i < 3; i++) {
       bool sel = (i == groupMenuSel);
       if (sel) {
-        display.fillRect(0, y - 1, 128, 10, SSD1306_WHITE);
+        display.fillRect(0, y - 1, SCREEN_W, 10, SSD1306_WHITE);
         display.setTextColor(SSD1306_BLACK);
       }
       display.setCursor(2, y);
@@ -5800,7 +6891,7 @@ void drawPageGroups() {
       y += 10;
     }
     
-    display.setCursor(0, OLED_HINT_Y);
+    display.setCursor(0, DISPLAY_HINT_Y);
     display.println("Sht:Cycle Lng:Select");
     return;
   }
@@ -5845,7 +6936,7 @@ void drawPageGroups() {
     }
     
     if (selected) {
-      display.fillRect(0, y - 1, 128, 10, SSD1306_WHITE);
+      display.fillRect(0, y - 1, SCREEN_W, 10, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
     
@@ -5870,7 +6961,7 @@ void drawPageGroups() {
     y += 10;
   }
   
-  display.setCursor(0, OLED_HINT_Y);
+  display.setCursor(0, DISPLAY_HINT_Y);
   display.println("Dbl:Cycle Lng:Menu");
 }
 #endif
@@ -5884,7 +6975,7 @@ void drawPageClock() {
   display.drawBitmap(2, 1, ICON_TIME,8,8,SSD1306_WHITE);
   display.setCursor(13, 1);
   display.println(tzAdjustMode ? "SET TIMEZONE" : "Clock");
-  display.drawLine(0,10,127,10,SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y,SSD1306_WHITE);
 
   if (tzAdjustMode) {
     display.setTextSize(2);
@@ -5904,7 +6995,7 @@ void drawPageClock() {
     snprintf(buf,sizeof(buf),"%02d:%02d:%02d",fakeH,fakeM,fakeS);
     display.setCursor(16,15); display.println(buf);
     display.setTextSize(1);
-    display.drawLine(0,34,127,34,SSD1306_WHITE);
+    display.drawLine(0, 34, SCREEN_MAX_X, 34,SSD1306_WHITE);
     display.setCursor(2, 39); display.println("19/03/2026");
     snprintf(buf,sizeof(buf),"UTC%+d",tzOffset);
     display.setCursor(92,39); display.println(buf);
@@ -5914,7 +7005,7 @@ void drawPageClock() {
       snprintf(buf,sizeof(buf),"%02d:%02d:%02d",hour,minute,second);
       display.setCursor(16,15); display.println(buf);
       display.setTextSize(1);
-      display.drawLine(0,34,127,34,SSD1306_WHITE);
+      display.drawLine(0, 34, SCREEN_MAX_X, 34,SSD1306_WHITE);
       snprintf(buf,sizeof(buf),"%02d/%02d/%04d",day,month,year);
       display.setCursor(2, 39); display.println(buf);
       snprintf(buf,sizeof(buf),"UTC%+d",tzOffset);
@@ -5941,7 +7032,7 @@ void drawPageCountdown() {
   else if (cdtRunning)  display.println("Countdown");
   else if (cdtDone)     display.println("Time's up!");
   else                  display.println("Countdown");
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   // Calculate display time
   uint32_t dispMs;
@@ -5962,7 +7053,7 @@ void drawPageCountdown() {
   display.setCursor(16, 15); display.println(buf);
   display.setTextSize(1);
 
-  display.drawLine(0, 34, 127, 34, SSD1306_WHITE);
+  display.drawLine(0, 34, SCREEN_MAX_X, 34, SSD1306_WHITE);
 
   // Set mode — show preset label and cycling hint
   if (cdtSetMode) {
@@ -5996,7 +7087,7 @@ void drawPageStopwatch() {
   display.drawBitmap(2, 1, ICON_TIMER, 8, 8, SSD1306_WHITE);
   display.setCursor(13, 1);
   display.println(swRunning ? "Stopwatch" : (swElapsedMs > 0 ? "Stopped" : "Stopwatch"));
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   // Time — setTextSize(2), y=15, centred — matches clock page
   formatTime(ms, buf, sizeof(buf));
@@ -6007,7 +7098,7 @@ void drawPageStopwatch() {
   display.setTextSize(1);
 
   // Bottom line at y=34 — matches clock page (4px below time bottom y=31)
-  display.drawLine(0, 34, 127, 34, SSD1306_WHITE);
+  display.drawLine(0, 34, SCREEN_MAX_X, 34, SSD1306_WHITE);
 
   // Instructions
   if (!swRunning && swElapsedMs == 0) {
@@ -6026,7 +7117,7 @@ void drawPageRoute() {
   display.drawBitmap(2, 1, ICON_ROUTE,8,8,SSD1306_WHITE);
   display.setCursor(13, 1);
   display.println(routeRecording ? "Recording..." : "Track");
-  display.drawLine(0,10,127,10,SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y,SSD1306_WHITE);
 
   snprintf(buf,sizeof(buf),"Points: %d",routeCount);
   display.setCursor(2, 14); display.println(buf);
@@ -6044,7 +7135,7 @@ void drawPageRoute() {
   }
   if (!cachedFix) { display.setCursor(2, 34); display.println("Waiting for fix..."); }
 
-  display.drawLine(0,45,127,45,SSD1306_WHITE);
+  display.drawLine(0, 45, SCREEN_MAX_X, 45,SSD1306_WHITE);
   display.setCursor(2, 49);
   if (routeRecording)        display.println("Dbl:stop  Hold:clear");
   else if (routeCount>0)     display.println("Dbl:start Hold:clear");
@@ -6073,48 +7164,147 @@ void drawPageRouteLog() {
   if (routeRecording) {
     display.setCursor(80, 1); display.print("*REC");
   }
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
-  if (logClearWarn) {
-    // Warning — track recording in progress
-    display.setCursor(2, 14); display.println("! Track in progress");
-    display.setCursor(2, 24); display.println("It won't be saved.");
-    display.drawLine(0, 34, 127, 34, SSD1306_WHITE);
-    display.setCursor(2, 38); display.println("Press: cancel");
-    display.setCursor(2, 48); display.println("Hold: clear anyway");
-  } else {
-    // Count and total summary
-    snprintf(buf, sizeof(buf), "Tracks: %d", routeLogCount);
-    display.setCursor(2, 14); display.println(buf);
-
-    int totalPts = 0;
-    float totalDist = 0;
-    for (int i = 0; i < routeLogCount; i++) {
-      totalPts  += routeLog[i].count;
-      totalDist += routeLog[i].distM;
+  // Show deleted confirmation briefly
+  if (trackLogDeleted) {
+    if (millis() - trackLogDeletedMs > 1500) {
+      trackLogDeleted = false;
+    } else {
+      display.setCursor(30, 28); display.println("Route deleted");
+      return;
     }
-    if (totalDist >= 1000)
-      snprintf(buf, sizeof(buf), "%.1fkm  %dpts", totalDist/1000.0, totalPts);
+  }
+
+  // Delete confirmation dialog - compact layout
+  if (trackLogConfirm && trackLogRow > 0 && trackLogRow <= routeLogCount) {
+    int idx = trackLogRow - 1;
+    
+    // Show route name or number
+    if (routeLog[idx].name[0] != '\0') {
+      snprintf(buf, sizeof(buf), "Delete %s?", routeLog[idx].name);
+    } else {
+      snprintf(buf, sizeof(buf), "Delete route #%d?", idx + 1);
+    }
+    display.setCursor(2, 12); display.println(buf);
+    
+    // Show stats
+    float d = routeLog[idx].distM;
+    if (d >= 1000)
+      snprintf(buf, sizeof(buf), "%.1fkm  %dpts", d/1000.0, routeLog[idx].count);
     else
-      snprintf(buf, sizeof(buf), "%.0fm  %dpts", totalDist, totalPts);
-    display.setCursor(2, 23); display.println(buf);
+      snprintf(buf, sizeof(buf), "%.0fm  %dpts", d, routeLog[idx].count);
+    display.setCursor(2, 22); display.println(buf);
+    
+    display.drawLine(0, 32, SCREEN_MAX_X, 32, SSD1306_WHITE);
+    display.setCursor(2, 35); display.println("Press:cancel");
+    display.setCursor(2, 45); display.println("Hold:delete");
+    return;
+  }
 
-    display.drawLine(0, 32, 127, 32, SSD1306_WHITE);
+  // Clear all warning - compact layout
+  if (logClearWarn) {
+    display.setCursor(2, 12); display.println("Clear ALL tracks?");
+    display.setCursor(2, 22); display.println("Cannot be undone");
+    display.drawLine(0, 32, SCREEN_MAX_X, 32, SSD1306_WHITE);
+    display.setCursor(2, 35); display.println("Press:cancel");
+    display.setCursor(2, 45); display.println("Hold:clear");
+    return;
+  }
 
-    // Show last 2 tracks
-    int start = max(0, routeLogCount - 2);
-    for (int i = start; i < routeLogCount; i++) {
-      float d = routeLog[i].distM;
-      if (d >= 1000)
-        snprintf(buf, sizeof(buf), "#%d: %.1fkm %dpts", i+1, d/1000.0, routeLog[i].count);
-      else
-        snprintf(buf, sizeof(buf), "#%d: %.0fm %dpts",  i+1, d, routeLog[i].count);
-      display.setCursor(2, 35 + (i - start) * 10);
-      display.println(buf);
+  // No routes - show empty state
+  if (routeLogCount == 0) {
+    display.setCursor(2, 20); display.println("No saved routes");
+    display.setCursor(2, 34); display.println("Start recording to");
+    display.setCursor(2, 44); display.println("save a track.");
+    return;
+  }
+
+  // Scrollable list view - 3 rows visible (summary + 2 routes)
+  // Row 0 = Summary (total), Row 1+ = individual routes
+  const int ROWS_PER_PAGE = 3;
+  const int TOTAL_ROWS = routeLogCount + 1;  // +1 for summary row
+  
+  // Clamp selection
+  if (trackLogRow >= TOTAL_ROWS) trackLogRow = TOTAL_ROWS - 1;
+  
+  int page = trackLogRow / ROWS_PER_PAGE;
+  int startRow = page * ROWS_PER_PAGE;
+  int endRow = min(startRow + ROWS_PER_PAGE, TOTAL_ROWS);
+  
+  for (int i = startRow; i < endRow; i++) {
+    int y = 13 + (i - startRow) * 11;  // Compact spacing
+    bool active = (i == trackLogRow);
+    
+    // Clear row background
+    display.fillRect(0, y-1, SCREEN_W, 10, SSD1306_BLACK);
+    
+    if (active) {
+      // Highlight selected row
+      display.fillRect(0, y-1, SCREEN_W, 10, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    } else {
+      display.setTextColor(SSD1306_WHITE);
     }
-
-    // Hold hint — no divider, sits clear of nav dots
-    display.setCursor(2, 50); display.println("Hold: clear all");
+    
+    if (i == 0) {
+      // Summary row
+      float totalDist = 0;
+      for (int j = 0; j < routeLogCount; j++) {
+        totalDist += routeLog[j].distM;
+      }
+      snprintf(buf, sizeof(buf), "%d tracks", routeLogCount);
+      display.setCursor(6, y); display.print(buf);
+      
+      if (totalDist >= 1000)
+        snprintf(buf, sizeof(buf), "%.1fkm", totalDist/1000.0);
+      else
+        snprintf(buf, sizeof(buf), "%.0fm", totalDist);
+      int vw = strlen(buf) * 6;
+      display.setCursor(SCREEN_MAX_X - vw, y); display.print(buf);
+    } else {
+      // Individual route row
+      int idx = i - 1;
+      float d = routeLog[idx].distM;
+      
+      // Route number and name (if available)
+      if (routeLog[idx].name[0] != '\0') {
+        snprintf(buf, sizeof(buf), "#%d %.8s", idx + 1, routeLog[idx].name);
+      } else {
+        snprintf(buf, sizeof(buf), "#%d Route", idx + 1);
+      }
+      display.setCursor(6, y); display.print(buf);
+      
+      // Distance right-aligned
+      if (d >= 1000)
+        snprintf(buf, sizeof(buf), "%.1fkm", d/1000.0);
+      else
+        snprintf(buf, sizeof(buf), "%.0fm", d);
+      int vw = strlen(buf) * 6;
+      display.setCursor(SCREEN_MAX_X - vw, y); display.print(buf);
+    }
+    
+    // Selection indicator (black bar on white background for active row)
+    if (active) {
+      display.fillRect(0, y, 3, 7, SSD1306_BLACK);
+    }
+    
+    display.setTextColor(SSD1306_WHITE);
+  }
+  
+  // Horizontal line above hint
+  display.drawLine(0, 44, SCREEN_MAX_X, 44, SSD1306_WHITE);
+  
+  // Hint text
+  display.setCursor(2, 47); display.print("Dbl:Cycle Lng:Menu");
+  
+  // Scroll indicator - show down arrow if more rows exist below current page
+  if (endRow < TOTAL_ROWS) {
+    // Down arrow at right edge (V shape)
+    int ax = SCREEN_MAX_X - 6;
+    int ay = 48;
+    display.drawLine(ax, ay, ax + 3, ay + 4, SSD1306_WHITE);
+    display.drawLine(ax + 6, ay, ax + 3, ay + 4, SSD1306_WHITE);
   }
 }
 
@@ -6124,7 +7314,7 @@ void drawPageElevation() {
   // Header
   display.drawBitmap(2, 1, ICON_ELEV, 8, 8, SSD1306_WHITE);
   display.setCursor(13, 1); display.println("Elevation");
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   if (!cachedFix) {
     display.setCursor(2, 28); display.println("Acquiring signal...");
@@ -6237,7 +7427,7 @@ void drawPageSaveLoc() {
   // Header — Pin icon + Waypoint title
   display.drawBitmap(2, 1, ICON_PIN, 8, 8, SSD1306_WHITE);
   display.setCursor(13, 1); display.println("Waypoint");
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   // Current position
   display.setCursor(2, 14);
@@ -6249,7 +7439,7 @@ void drawPageSaveLoc() {
     display.setCursor(2, 32); display.println(buf);
   }
 
-  display.drawLine(0, 42, 127, 42, SSD1306_WHITE);
+  display.drawLine(0, 42, SCREEN_MAX_X, 42, SSD1306_WHITE);
 
   // Hint
   display.setCursor(2, 46);
@@ -6257,10 +7447,10 @@ void drawPageSaveLoc() {
 }
 
 void drawPairingScreen() {
-  display.clearDisplay();
+  displayClear();
   // Header
   display.setCursor(2, 1); display.println("Pair Device");
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   // Instruction
   display.setCursor(2, 14); display.println("Enter this PIN");
@@ -6275,7 +7465,7 @@ void drawPairingScreen() {
   display.setCursor((128 - pinW) / 2, 36);
   display.println(pinStr);
   display.setTextSize(1);
-  display.display();
+  displayFlush();
 }
 
 // Weather condition code to short description
@@ -6305,9 +7495,9 @@ void drawPageWeatherSimple() {
     char timeBuf[6];
     snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", wifiLastFetchHour, wifiLastFetchMin);
     int tw = strlen(timeBuf) * 6;
-    display.setCursor(127 - tw, 1); display.println(timeBuf);
+    display.setCursor(SCREEN_MAX_X - tw, 1); display.println(timeBuf);
   }
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   if (!weather.valid && !moonData.valid) {
     display.setCursor(2, 22); display.println("No weather data");
@@ -6356,9 +7546,9 @@ void drawPageWifi() {
   if (magDecValid) {
     snprintf(buf, sizeof(buf), "%+.1fd", magDeclination);
     int w = strlen(buf) * 6;
-    display.setCursor(127 - w, 1); display.println(buf);
+    display.setCursor(SCREEN_MAX_X - w, 1); display.println(buf);
   }
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   if (weather.valid) {
     float temp  = setElevFt ? weather.tempC * 9/5 + 32 : weather.tempC;
@@ -6376,7 +7566,7 @@ void drawPageWifi() {
     display.setCursor(2, 23); display.println(buf);
   }
 
-  display.drawLine(0, 33, 127, 33, SSD1306_WHITE);
+  display.drawLine(0, 33, SCREEN_MAX_X, 33, SSD1306_WHITE);
 
   if (sunData.valid) {
     // Row 3 — Sunrise/sunset
@@ -6410,14 +7600,14 @@ void drawPageWifi() {
 // ── QR Code placeholder (feature disabled pending library fix) ───────────────
 // Shows WiFi credentials as text instead of QR code
 void drawQRCode() {
-  display.clearDisplay();
+  displayClear();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   
   // Header
   display.setCursor(30, 2);
   display.print("WiFi Hotspot");
-  display.drawLine(0, 12, 127, 12, SSD1306_WHITE);
+  display.drawLine(0, 12, SCREEN_MAX_X, 12, SSD1306_WHITE);
   
   // SSID
   display.setCursor(4, 18);
@@ -6434,12 +7624,12 @@ void drawQRCode() {
   display.setCursor(14, 56);
   display.print("Press to dismiss");
   
-  display.display();
+  displayFlush();
 }
 
 
 void drawPageSettings() {
-  display.clearDisplay();  // Always clear to prevent artifacts
+  displayClear();  // Always clear to prevent artifacts
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   
@@ -6447,7 +7637,7 @@ void drawPageSettings() {
   if (settingsSaved) {
     display.drawBitmap(2, 1, ICON_COG, 8, 8, SSD1306_WHITE);
     display.setCursor(13, 1); display.println("Settings");
-    display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+    display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
     // Circle with tick — centred at cx=64, cy=36, r=12
     const int cx = 64, cy = 36, r = 12;
     display.drawCircle(cx, cy, r, SSD1306_WHITE);
@@ -6485,7 +7675,7 @@ void drawPageSettings() {
   } else {
     display.setCursor(13, 1); display.println("Settings");
   }
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   // Row labels and values
 #if ENABLE_LORA
@@ -6514,11 +7704,11 @@ void drawPageSettings() {
     bool active = (i == settingsRow);
 
     // Clear this row's background first
-    display.fillRect(0, y-1, 128, 10, SSD1306_BLACK);
+    display.fillRect(0, y-1, SCREEN_W, 10, SSD1306_BLACK);
 
     if (active && settingsSel) {
       // Invert active row while editing
-      display.fillRect(0, y-1, 128, 10, SSD1306_WHITE);
+      display.fillRect(0, y-1, SCREEN_W, 10, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     } else {
       display.setTextColor(SSD1306_WHITE);
@@ -6530,7 +7720,7 @@ void drawPageSettings() {
 
     // Right-align value
     int vw = strlen(vals[i]) * 6;
-    display.setCursor(127 - vw, y);
+    display.setCursor(SCREEN_MAX_X - vw, y);
     display.print(vals[i]);
 
     // Row cursor indicator — small filled rect on left edge
@@ -6564,10 +7754,10 @@ void drawPageSettings() {
 void drawPagePower() {
   if (sosActive) {
     // ── SOS active screen ──
-    display.clearDisplay();
+    displayClear();
     // Flashing header
     display.setCursor(2, 1); display.println("** SOS ACTIVE **");
-    display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+    display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
     display.setCursor(2, 14);
     display.println("Broadcasting SOS.");
     display.setCursor(2, 24);
@@ -6577,14 +7767,14 @@ void drawPagePower() {
     display.println(buf);
     display.setCursor(2, 36);
     display.println("Press to cancel.");
-    display.drawLine(0, 54, 127, 54, SSD1306_WHITE);
-    display.display();
+    display.drawLine(0, 54, SCREEN_MAX_X, 54, SSD1306_WHITE);
+    displayFlush();
     return;
   }
   // Header
   display.drawBitmap(2, 1, ICON_PWRBTN, 8, 8, SSD1306_WHITE);
   display.setCursor(13, 1); display.println("Power off");
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   // Power symbol centred on left
   const int cx = 21, cy = 32, r = 14;
@@ -6598,7 +7788,7 @@ void drawPagePower() {
   display.setCursor(45, 34); display.println("Double tap:");
   display.setCursor(45, 43); display.println("Send SOS");
 
-  display.drawLine(0, 54, 127, 54, SSD1306_WHITE);
+  display.drawLine(0, 54, SCREEN_MAX_X, 54, SSD1306_WHITE);
 }
 
 #if ENABLE_LORA
@@ -6610,7 +7800,7 @@ void drawPageMessages() {
     display.print(loraMsgUnread);
     display.print(" new)");
   }
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
   if (loraMsgCount == 0) {
     display.setCursor(10, 30); display.println("No messages");
@@ -6618,7 +7808,7 @@ void drawPageMessages() {
   }
 
   // Show messages with scroll support
-  // Available height: y=13 to y=OLED_HINT_Y (46) = 33px, fits 2 messages × ~16px each
+  // Available height: y=13 to y=DISPLAY_HINT_Y (46) = 33px, fits 2 messages × ~16px each
   // Each message: name row (8px) + text row (8px) = 16px
   const int maxVisible = 2;
   int shown = 0;
@@ -6627,7 +7817,7 @@ void drawPageMessages() {
   // Calculate starting message index based on scroll
   int startIdx = loraMsgCount - 1 - loraMsgScroll;
   
-  for (int m = startIdx; m >= 0 && shown < maxVisible && y < OLED_HINT_Y; m--) {
+  for (int m = startIdx; m >= 0 && shown < maxVisible && y < DISPLAY_HINT_Y; m--) {
     int slot = m % LORA_MAX_MSGS;
     if (!loraMsgs[slot].active) continue;
     if (!loraMsgs[slot].read) {
@@ -6652,25 +7842,25 @@ void drawPageMessages() {
   }
   
   // Show scroll indicators and count in hint area
-  display.drawLine(0, OLED_HINT_Y, 127, OLED_HINT_Y, SSD1306_WHITE);
+  display.drawLine(0, DISPLAY_HINT_Y, SCREEN_MAX_X, DISPLAY_HINT_Y, SSD1306_WHITE);
   char hint[22];
   int current = loraMsgScroll + 1;
   int total = loraMsgCount;
   
   // Up arrow if can scroll up (to newer)
   if (loraMsgScroll > 0) {
-    display.setCursor(2, OLED_HINT_Y + 2);
+    display.setCursor(2, DISPLAY_HINT_Y + 2);
     display.print("\x18");  // up arrow
   }
   // Down arrow if can scroll down (to older)
   if (loraMsgScroll + maxVisible < loraMsgCount) {
-    display.setCursor(120, OLED_HINT_Y + 2);
+    display.setCursor(120, DISPLAY_HINT_Y + 2);
     display.print("\x19");  // down arrow
   }
   // Center: message position
   snprintf(hint, sizeof(hint), "%d/%d", current, total);
   int hintW = strlen(hint) * 6;
-  display.setCursor((128 - hintW) / 2, OLED_HINT_Y + 2);
+  display.setCursor((128 - hintW) / 2, DISPLAY_HINT_Y + 2);
   display.print(hint);
 }
 #endif
@@ -6680,15 +7870,15 @@ void drawPageMessages() {
 // ============================================================
 void wakeScreen() {
   if (!screenOn) {
-    display.ssd1306_command(SSD1306_DISPLAYON);
+    displayOn();
     screenOn = true;
   }
   lastActivityMs = millis();
 }
 
-// Draw page content only (no display.display() call) — used by transitions
+// Draw page content only (no displayFlush() call) — used by transitions
 void oledDrawPage() {
-  display.clearDisplay();
+  displayClear();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   
@@ -6740,7 +7930,7 @@ void oledDraw() {
 #endif
 
   oledDrawPage();
-  display.display();
+  displayFlush();
 }
 
 // ============================================================
@@ -6880,18 +8070,38 @@ void handleButton() {
         weatherDetailActive = true;
         oledDraw();
       } else if (currentPage==pageCompass()) {
-        display.ssd1306_command(SSD1306_DISPLAYOFF);
+        displayOff();
         screenOn = false;
       } else if (currentPage==pageTrack()) {
         clearRoute();
         oledDraw();
       } else if (routeLogCount>0 && currentPage==pageRouteLog()) {
-        if (routeRecording) {
-          logClearWarn = true;
+        if (trackLogConfirm) {
+          // Confirm delete of single route
+          if (trackLogRow > 0 && trackLogRow <= routeLogCount) {
+            int idx = trackLogRow - 1;
+            routeLogDeleteAt(idx);
+            trackLogConfirm = false;
+            trackLogDeleted = true;
+            trackLogDeletedMs = millis();
+            // Adjust selection if needed
+            if (trackLogRow > routeLogCount) trackLogRow = routeLogCount;
+          }
         } else if (logClearWarn) {
+          // Confirm clear all
           routeLogClear();
+          trackLogRow = 0;
+          logClearWarn = false;
+        } else if (trackLogRow == 0) {
+          // Summary row selected - initiate clear all
+          if (routeRecording) {
+            logClearWarn = true;  // Warn about active recording
+          } else {
+            logClearWarn = true;
+          }
         } else {
-          routeLogClear();
+          // Individual route selected - initiate delete
+          trackLogConfirm = true;
         }
         oledDraw();
       } else if (currentPage==pageInfo()) {
@@ -6946,10 +8156,10 @@ void handleButton() {
           prefs.putDouble("pinLon", savedLon);
           prefs.putBool("pinSaved", true);
           prefs.end();
-          display.clearDisplay();
+          displayClear();
           display.drawBitmap(56, 18, ICON_PIN, 8, 8, SSD1306_WHITE);
           display.setCursor(8, 36); display.println("Waypoint marked!");
-          display.display(); delay(1200);
+          displayFlush(); delay(1200);
         }
         oledDraw();
       } else if (currentPage==pageSettings()) {
@@ -6978,10 +8188,10 @@ void handleButton() {
         }
         oledDraw();
       } else if (currentPage==pagePower()) {
-        display.clearDisplay();
+        displayClear();
         display.setCursor(20,28); display.println("Powered off");
-        display.display(); delay(800);
-        display.ssd1306_command(SSD1306_DISPLAYOFF);
+        displayFlush(); delay(800);
+        displayOff();
         esp_deep_sleep_start();
       }
     }
@@ -7066,7 +8276,7 @@ void handleButton() {
           case 1: setElevFt     = !setElevFt;     break;
           case 2: setTimeoutIdx = (setTimeoutIdx+1) % TIMEOUT_PRESET_COUNT; break;
           case 3: setBrightFull = !setBrightFull;
-                  display.invertDisplay(!setBrightFull); break;
+                  displayInvert(!setBrightFull); break;
           case 4: // Hotspot — instant toggle
                   if (apEnabled) {
                     apStop();
@@ -7113,11 +8323,27 @@ void handleButton() {
         }
 #endif
       } else if (routeLogCount>0 && currentPage==pageRouteLog()) {
-        if (logClearWarn) {
+        if (trackLogConfirm) {
+          // Cancel delete confirmation
+          trackLogConfirm = false;
+          oledDraw();
+        } else if (logClearWarn) {
+          // Cancel clear all
           logClearWarn = false;
           oledDraw();
+        } else if (btnPendingSingle && (now - btnPendingMs <= BTN_DOUBLE_MS)) {
+          // Double press — cycle through rows
+          btnPendingSingle = false;
+          int totalRows = routeLogCount + 1;
+          trackLogRow++;
+          if (trackLogRow >= totalRows) trackLogRow = 0;
+          oledDraw();
         } else {
-          nextPage();
+          // First press — wait for possible double, otherwise go to next page
+          btnPendingSingle = true;
+          btnPendingMs = now;
+          lastActivityMs = now;
+          // Don't navigate yet - wait to see if double press
         }
       } else if (currentPage==pageTrack()) {
         if (btnPendingSingle && (now - btnPendingMs <= BTN_DOUBLE_MS)) {
@@ -7244,9 +8470,30 @@ void simulateGPS() {
 void setup() {
   Serial.begin(115200);
   delay(300);
-  Serial.println("[BOOT] Azimuth v3.17");
+  Serial.println("[BOOT] Azimuth v3.18");
   Serial.printf("[BOOT] Device: %s\n", bleDeviceName);
 
+#ifdef BOARD_WIRELESS_TRACKER
+  // Wireless Tracker: Vext controls both TFT and GNSS power
+  pinMode(VEXT_CTRL_PIN, OUTPUT);
+  digitalWrite(VEXT_CTRL_PIN, HIGH);  // HIGH = power on for Tracker
+  delay(200);
+  
+  // TFT backlight
+  pinMode(TFT_LED, OUTPUT);
+  digitalWrite(TFT_LED, HIGH);  // Backlight on
+  
+  // Initialize hardware SPI on TFT pins (HSPI)
+  SPI.begin(TFT_SCLK, -1, TFT_MOSI, TFT_CS);
+  
+  // Initialize TFT with correct offsets for Heltec panel
+  tft.initHeltec();
+  tft.fillScreen(ST77XX_BLACK);
+  Serial.println("[TFT] Ready");
+  showSplash();
+  
+#else
+  // WiFi LoRa 32 V3: Separate Vext and VGNSS controls
   pinMode(VEXT_CTRL_PIN,  OUTPUT); digitalWrite(VEXT_CTRL_PIN,  LOW);
   pinMode(VGNSS_CTRL_PIN, OUTPUT); digitalWrite(VGNSS_CTRL_PIN, LOW);
   delay(200);
@@ -7260,12 +8507,14 @@ void setup() {
     Serial.println("[OLED] Init FAILED");
   } else {
     Serial.println("[OLED] Ready");
-  display.invertDisplay(!setBrightFull);  // apply saved brightness mode
+  displayInvert(!setBrightFull);  // apply saved brightness mode
     showSplash();
   }
+#endif
 
   // Load persisted route logs, waypoints and groups from FFat
   routeLogLoad();
+  
   waypointLoad();
   groupsLoad();
   pendingKeyShareLoad();  // restore any pending key share request
@@ -7430,6 +8679,12 @@ void setup() {
   if (wifiEnabled) {
     wifiConnectAndFetch();
   }
+  
+  // Draw initial screen after setup complete
+  lastActivityMs = millis();  // Reset timeout after all init complete
+  screenOn = true;
+  displayOn();
+  oledDraw();
 }
 
 // ============================================================
@@ -7506,17 +8761,17 @@ void loop() {
       if (flashStep != cdtAlertFlash) {
         cdtAlertFlash = flashStep;
         if (flashStep % 2 == 0) {
-          display.invertDisplay(true);
+          displayInvert(true);
           digitalWrite(LED_PIN, HIGH);
         } else {
-          display.invertDisplay(false);
+          displayInvert(false);
           digitalWrite(LED_PIN, LOW);
         }
       }
     } else {
       // Alert done
       cdtAlerting = false;
-      display.invertDisplay(false);
+      displayInvert(false);
       digitalWrite(LED_PIN, LOW);
       oledDraw();
     }
@@ -7602,6 +8857,7 @@ void loop() {
     
     if (!settingsSel) {      // block pagination while editing settings
       if (currentPage == pageSettings()) { settingsRow = 0; }
+      if (currentPage == pageRouteLog()) { trackLogRow = 0; trackLogConfirm = false; }
       wakeScreen();
       nextPage();
     } else {
@@ -7638,7 +8894,7 @@ void loop() {
   // Screen timeout (skip if QR code is active — user needs time to scan)
   if (screenOn && !qrCodeActive && currentPage!=pageCompass() && !(locSaved && currentPage==pageWaypoint()) && !(weather.valid && currentPage==pageWeather())) {
     if (millis() - lastActivityMs >= timeoutMs()) {
-      display.ssd1306_command(SSD1306_DISPLAYOFF);
+      displayOff();
       screenOn = false;
     }
   }
@@ -7835,10 +9091,10 @@ void loop() {
       if (silentMs >= 300000UL && silentMs < 330000UL) {
         Serial.printf("[LORA] Stale peer alert: %s\n", loraPeers[p].name);
         // Flash OLED: brief invert flash to draw attention
-        display.invertDisplay(true);  delay(200);
-        display.invertDisplay(false); delay(100);
-        display.invertDisplay(true);  delay(200);
-        display.invertDisplay(false);
+        displayInvert(true);  delay(200);
+        displayInvert(false); delay(100);
+        displayInvert(true);  delay(200);
+        displayInvert(false);
         // Notify BLE with stale peer JSON
         if (bleConnected && clientSubscribed && sessionAuthorised && pPeerChar) {
           char json[80];

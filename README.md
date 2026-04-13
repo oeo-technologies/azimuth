@@ -15,6 +15,7 @@ Azimuth lets hikers, runners, and outdoor groups share real-time positions over 
 - 🔁 **Relay mode** — extend range by relaying packets through intermediate devices
 - 🔐 **AES-128 encryption** — your position data stays private
 - 📴 **Fully offline** — no cloud, no SIM, no subscriptions
+- 🗺️ **Route management** — record tracks, name them, view stats, export GPX
 - 🌐 **Web app** — connect via BLE or WiFi hotspot, works offline with cached maps
 - 🖥️ **OLED display** — 14 pages: position, compass, track recording, waypoints, weather, and more
 - ⚡ **Web flasher** — update firmware from your browser, no IDE needed
@@ -44,7 +45,7 @@ Azimuth lets hikers, runners, and outdoor groups share real-time positions over 
 1. Install [Arduino IDE](https://www.arduino.cc/en/software)
 2. Add Heltec ESP32 board package: `https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series/releases/download/0.0.9/package_heltec_esp32_index.json`
 3. Install libraries: `RadioLib`, `NimBLE-Arduino`, `Adafruit SSD1306`, `TinyGPSPlus`
-4. Open `firmware/gps_tracker_v316.ino`
+4. Open `firmware/gps_tracker_v318.ino`
 5. Select board: **WiFi LoRa 32(V3)**, USB CDC On Boot: **Enabled**
 6. Upload
 
@@ -57,7 +58,8 @@ The companion web app runs entirely in your browser:
 
 Features:
 - Live map with your position and all peers
-- Route recording and GPX export
+- Route recording with elevation, speed, and pace charts
+- Route viewer — browse saved routes, rename, delete, export GPX
 - Waypoint management
 - Offline map caching (download tiles for use without internet)
 - Direct and broadcast messaging
@@ -101,7 +103,7 @@ Enable relay mode to extend mesh range. Relaying devices will rebroadcast packet
 ```
 azimuth/
 ├── firmware/
-│   ├── gps_tracker_v316.ino    # Main firmware
+│   ├── gps_tracker_v318.ino    # Main firmware
 │   └── webapp_gz.h             # Embedded web app (gzip)
 └── webapp/
     ├── index.html              # Web app source

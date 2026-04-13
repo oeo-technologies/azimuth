@@ -13,7 +13,7 @@
 $ErrorActionPreference = "Stop"
 
 $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$HtmlFile   = Join-Path $ScriptDir "..\webapp\index.html"
+$HtmlFile   = Join-Path $ScriptDir "index.html"
 $HeaderFile = Join-Path $ScriptDir "webapp_gz.h"
 
 if (-not (Test-Path $HtmlFile)) {
