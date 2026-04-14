@@ -17,8 +17,9 @@ Azimuth lets hikers, runners, and outdoor groups share real-time positions over 
 - 📴 **Fully offline** — no cloud, no SIM, no subscriptions
 - 🗺️ **Route management** — record tracks, name them, view stats, export GPX
 - 🌐 **Web app** — connect via BLE or WiFi hotspot, works offline with cached maps
-- 🖥️ **OLED display** — 14 pages: position, compass, track recording, waypoints, weather, and more
+- 🖥️ **OLED display** — 14+ pages: position, compass, track recording, waypoints, weather, and more
 - ⚡ **Web flasher** — update firmware from your browser, no IDE needed
+- 📻 **Multi-protocol scanner** — see Meshtastic and MeshCore devices on your map (NEW in v3.19)
 
 ## Hardware
 
@@ -30,6 +31,8 @@ Azimuth lets hikers, runners, and outdoor groups share real-time positions over 
 | Display | 128×64 OLED |
 | GPS | AT6558R |
 | Battery | 3.7V LiPo (JST connector) |
+
+**Alternative:** [Heltec Wireless Tracker](https://heltec.org/project/wireless-tracker/) with built-in GPS and TFT display.
 
 **Total cost:** ~£30
 
@@ -44,8 +47,8 @@ Azimuth lets hikers, runners, and outdoor groups share real-time positions over 
 ### Option 2: Arduino IDE
 1. Install [Arduino IDE](https://www.arduino.cc/en/software)
 2. Add Heltec ESP32 board package: `https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series/releases/download/0.0.9/package_heltec_esp32_index.json`
-3. Install libraries: `RadioLib`, `NimBLE-Arduino`, `Adafruit SSD1306`, `TinyGPSPlus`
-4. Open `firmware/gps_tracker_v318.ino`
+3. Install libraries: `RadioLib`, `NimBLE-Arduino`, `Adafruit SSD1306`, `TinyGPSPlus`, `mbedtls`
+4. Open `firmware/gps_tracker_v319.ino`
 5. Select board: **WiFi LoRa 32(V3)**, USB CDC On Boot: **Enabled**
 6. Upload
 
@@ -63,6 +66,26 @@ Features:
 - Waypoint management
 - Offline map caching (download tiles for use without internet)
 - Direct and broadcast messaging
+- **Multi-protocol scanner** — see Meshtastic/MeshCore peers (v3.19+)
+- **Live radar heading** — compass direction on WiFi radar view (v3.19+)
+
+## Multi-Protocol Scanner (v3.19+)
+
+Azimuth can passively listen for position broadcasts from other mesh networks:
+
+| Network | Frequency (EU) | Encryption |
+|---------|----------------|------------|
+| Meshtastic | 869.525 MHz | AES-128-CTR (channel key) |
+| MeshCore | 869.4 MHz | Unencrypted |
+
+**Features:**
+- Automatic channel hopping between protocols
+- Decrypts Meshtastic packets if you have the channel key
+- Default public channel (AQ==) supported out of the box
+- Import custom channels from Meshtastic share URLs
+- External peers shown with "M" badge on map
+
+**Enable via:** LoRa Settings → Scanner → Meshtastic / MeshCore / Auto
 
 ## Architecture
 
@@ -77,6 +100,13 @@ Features:
 │    Web App      │                                │    Web App      │
 │   (Browser)     │                                │   (Browser)     │
 └─────────────────┘                                └─────────────────┘
+         │
+         │ Scanner (passive receive)
+         ▼
+┌─────────────────┐        ┌─────────────────┐
+│   Meshtastic    │        │    MeshCore     │
+│    Devices      │        │    Devices      │
+└─────────────────┘        └─────────────────┘
 ```
 
 **No server required.** Devices communicate directly over LoRa. The web app connects to your device via Bluetooth or WiFi — all data stays local.
@@ -103,12 +133,18 @@ Enable relay mode to extend mesh range. Relaying devices will rebroadcast packet
 ```
 azimuth/
 ├── firmware/
-│   ├── gps_tracker_v318.ino    # Main firmware
+│   ├── gps_tracker_v319.ino    # Main firmware
+│   ├── meshtastic_scanner.cpp  # Multi-protocol scanner
+│   ├── meshtastic_scanner.h    # Scanner header
 │   └── webapp_gz.h             # Embedded web app (gzip)
-└── webapp/
-    ├── index.html              # Web app source
-    ├── sw.js                   # Service worker (offline maps)
-    └── manifest.json           # PWA manifest
+├── webapp/
+│   ├── index.html              # Web app source
+│   ├── sw.js                   # Service worker (offline maps)
+│   └── manifest.json           # PWA manifest
+└── docs/
+    ├── features.html           # Feature documentation
+    ├── guide.html              # User guide
+    └── brand.html              # Brand assets
 ```
 
 ## Building the Embedded Web App
@@ -130,13 +166,23 @@ cd firmware
 | US915 | 910.5 MHz | 22 dBm | FCC compliant |
 | AU915 | 916.8 MHz | 22 dBm | ACMA compliant |
 
+## Version History
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| v3.19 | Apr 2026 | Multi-protocol scanner (Meshtastic/MeshCore), radar heading, UI improvements |
+| v3.18 | Apr 2026 | Route viewer, Track Log redesign, BLE route transfer, GPX export |
+| v3.17 | Mar 2026 | Weather integration, countdown timer, stopwatch |
+| v3.16 | Feb 2026 | Groups system, key sharing, relay mode |
+
 ## Contributing
 
 Contributions welcome! Areas where help is needed:
 - Native iOS app (Web Bluetooth not supported on iOS)
-- Additional LoRa regions
+- Additional LoRa regions (scanner frequencies for US915/AU915)
 - Battery optimization
 - UI/UX improvements
+- Additional mesh protocol support
 
 ## License
 
@@ -148,6 +194,7 @@ MIT — use it, modify it, sell it, whatever. Just don't blame me if you get los
 - 🚀 **Web App:** [azimuth.oeo.dev](https://azimuth.oeo.dev)
 - ⚡ **Web Flasher:** [oeo.dev/flash](https://oeo.dev/flash)
 - 📖 **User Guide:** [oeo.dev/guide](https://oeo.dev/guide)
+- 📋 **Features:** [oeo.dev/features](https://oeo.dev/features)
 
 ---
 

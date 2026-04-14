@@ -1,8 +1,28 @@
 /*
  * Azimuth GPS Tracker Firmware — OEO Technologies
  * =====================================================================
- * Version : v3.18
+ * Version : v3.19
  * Changes :
+ *   v3.19 — Multi-Protocol Scanner: Meshtastic + MeshCore passive listener
+ *          Scanner module receives position broadcasts from external LoRa
+ *          mesh networks without transmitting to them.
+ *          
+ *          Meshtastic support:
+ *          - EU868 LongFast channel: 869.525 MHz, SF11, BW250, sync 0x2B
+ *          - Decrypts default "AQ==" public key (AES-CTR)
+ *          - Parses protobuf position packets
+ *          
+ *          MeshCore support:
+ *          - EU868 regional: 869.618 MHz, SF8, BW62.5, sync 0x12
+ *          - Parses unencrypted advert broadcasts
+ *          - Extracts name, position from binary protocol
+ *          
+ *          Scanner modes: Off / Meshtastic / MeshCore / Auto
+ *          Auto mode alternates between protocols each scan cycle.
+ *          Scans every 60s for 5s per protocol.
+ *          External peers shown on OLED with [M] or [C] badge.
+ *          Web app: purple markers for Meshtastic, cyan for MeshCore.
+ *          BLE/WiFi JSON includes "src" field ("meshtastic"/"meshcore").
  *   v3.18 — Route viewer, Track Log management, BLE route transfer
  *          Web app route panel: browse saved routes with map, elevation chart.
  *          Route stats: distance, duration, elevation, speed profiles.
@@ -12,6 +32,9 @@
  *          Individual route deletion with confirmation dialog.
  *          Route naming support (stored in flash, editable via web/BLE).
  *          Fixed compass display positioning.
+ *          GPS TTFF optimisation: enable all constellations (GPS+BDS+GLONASS)
+ *          via PCAS04 command for maximum satellite visibility. Inject last
+ *          known position via PCAS11 before hot start for faster acquisition.
  *   v3.17 — Mesh status, config portal, lockdown mode, WiFi QR code
  *          New /status endpoint: self-contained HTML status page showing
  *          device info, battery, GPS, uptime, LoRa status, peer table with
@@ -223,6 +246,9 @@
 // QR code generation embedded — no external library needed
 #include "webapp_gz.h"  // gzipped web app embedded in firmware
 
+// Meshtastic Scanner — passive listener for external mesh networks
+#include "meshtastic_scanner.h"
+
 // LoRa SPI bus — instantiated inside loraBegin() to avoid global constructor issues
 
 // ============================================================
@@ -356,12 +382,12 @@ struct LoRaRegionPreset {
   uint8_t     cr;
   int8_t      power;
 };
-static const LoRaRegionPreset LORA_REGIONS[] = {
+static const int LORA_REGION_COUNT = 3;
+const LoRaRegionPreset LORA_REGIONS[] = {  // Not static — scanner needs access
   { "EU868",  868.1f, 9, 125.0f, 5, 14 },  // 14 dBm — regulatory max for EU868
   { "US915",  910.5f, 7,  62.5f, 5, 22 },  // 22 dBm — SX1262 hardware max (within FCC limit)
   { "AU915",  916.8f, 7,  62.5f, 5, 22 },  // 22 dBm — SX1262 hardware max (within ACMA limit)
 };
-static const int LORA_REGION_COUNT = 3;
 
 #define LORA_MAGIC          0xA9  // position broadcast
 #define LORA_MAGIC_MSG_BC   0xAB  // broadcast message (to all)
@@ -464,6 +490,9 @@ bool     loraReady        = false;
 uint8_t  loraRegionIdx    = 0;
 uint16_t loraIntervalSec  = 30;
 uint32_t lastLoraTxMs     = 0;
+
+// Meshtastic Scanner
+uint8_t  meshScannerMode  = 0;  // 0=off, 1=meshtastic, 2=meshcore(future), 3=auto
 
 // Message repeat — broadcast sent 3× with 5s gaps
 uint8_t  msgRepeatCount   = 0;      // how many more repeats to send
@@ -1161,9 +1190,10 @@ int pageMsgsOffset()  { return 0; }
 #endif
 int pageLogOffset()   { return routeLogCount > 0 ? 1 : 0; }
 int pageWifiOffset()  { return (wifiEnabled || weatherReceived) ? 1 : 0; }  // must match pageWeather condition
+int pageExtOffset()   { return (meshScannerMode > 0) ? 1 : 0; }  // External peers page when scanner enabled
 
-// Base sequence (no optional pages): 0=GPS,1=Compass,2=Track,3=Waypoint,4=Elevation,5=Groups,6=Clock,7=Countdown,8=Stopwatch,9=Info,10=Settings,11=Power
-// Each optional page (msgs, routelog, weather) shifts everything after it by +1
+// Base sequence (no optional pages): 0=GPS,1=Compass,2=Track,3=Waypoint,4=Elevation,5=Groups,6=External,7=Clock,...
+// Each optional page (msgs, routelog, weather, external) shifts everything after it by +1
 // With ENABLE_LORA, Groups page is always present at index 5+msgOffset
 int pageCompass()     { return 1 + pageMsgsOffset(); }
 int pageTrack()       { return 2 + pageMsgsOffset(); }
@@ -1171,15 +1201,17 @@ int pageWaypoint()    { return 3 + pageMsgsOffset(); }
 int pageElevation()   { return 4 + pageMsgsOffset(); }
 #if ENABLE_LORA
 int pageGroups()      { return 5 + pageMsgsOffset(); }
-int pageRouteLog()    { return routeLogCount > 0 ? 6 + pageMsgsOffset() : -1; }
-int pageWeather()     { return (wifiEnabled || weatherReceived) ? 6 + pageMsgsOffset() + pageLogOffset() : -1; }
-int pageClock()       { return 6 + pageMsgsOffset() + pageLogOffset() + pageWifiOffset(); }
-int pageCountdown()   { return 7 + pageMsgsOffset() + pageLogOffset() + pageWifiOffset(); }
-int pageStopwatch()   { return 8 + pageMsgsOffset() + pageLogOffset() + pageWifiOffset(); }
-int pageInfo()        { return 9 + pageMsgsOffset() + pageLogOffset() + pageWifiOffset(); }
-int pageSettings()    { return 10 + pageMsgsOffset() + pageLogOffset() + pageWifiOffset(); }
-int pagePower()       { return 11 + pageMsgsOffset() + pageLogOffset() + pageWifiOffset(); }
+int pageExternal()    { return meshScannerMode > 0 ? 6 + pageMsgsOffset() : -1; }
+int pageRouteLog()    { return routeLogCount > 0 ? 6 + pageMsgsOffset() + pageExtOffset() : -1; }
+int pageWeather()     { return (wifiEnabled || weatherReceived) ? 6 + pageMsgsOffset() + pageExtOffset() + pageLogOffset() : -1; }
+int pageClock()       { return 6 + pageMsgsOffset() + pageExtOffset() + pageLogOffset() + pageWifiOffset(); }
+int pageCountdown()   { return 7 + pageMsgsOffset() + pageExtOffset() + pageLogOffset() + pageWifiOffset(); }
+int pageStopwatch()   { return 8 + pageMsgsOffset() + pageExtOffset() + pageLogOffset() + pageWifiOffset(); }
+int pageInfo()        { return 9 + pageMsgsOffset() + pageExtOffset() + pageLogOffset() + pageWifiOffset(); }
+int pageSettings()    { return 10 + pageMsgsOffset() + pageExtOffset() + pageLogOffset() + pageWifiOffset(); }
+int pagePower()       { return 11 + pageMsgsOffset() + pageExtOffset() + pageLogOffset() + pageWifiOffset(); }
 #else
+int pageExternal()    { return -1; }  // No external page without LoRa
 int pageRouteLog()    { return routeLogCount > 0 ? 5 + pageMsgsOffset() : -1; }
 int pageWeather()     { return (wifiEnabled || weatherReceived) ? 5 + pageMsgsOffset() + pageLogOffset() : -1; }
 int pageClock()       { return 5 + pageMsgsOffset() + pageLogOffset() + pageWifiOffset(); }
@@ -1195,6 +1227,7 @@ int pageCount() {
 #if ENABLE_LORA
   base = 12; // +1 for Groups page
   if (loraMsgCount > 0) base++;
+  if (meshScannerMode > 0) base++;  // External peers page
 #endif
   if (routeLogCount > 0) base++;
   if (wifiEnabled || weatherReceived) base++;  // must match pageWeather condition
@@ -1598,6 +1631,17 @@ static const uint8_t PROGMEM ICON_GROUP[] = {
   0b01010100,  //  # # #
   0b00000000
 };
+// Scanner icon (antenna with radio waves)
+static const uint8_t PROGMEM ICON_SCAN[] = {
+  0b00001000,  //     #
+  0b00001000,  //     #
+  0b00001000,  //     #
+  0b01001001,  //  #  #  #
+  0b00101010,  //   # # #
+  0b01001001,  //  #  #  #
+  0b00001000,  //     #
+  0b00011100   //    ###
+};
 
 // ============================================================
 // NAVIGATION HELPERS
@@ -1751,9 +1795,11 @@ void loadTimezone() {
   loraIntervalSec = prefs.getUShort("loraInterval", 30);
   relayEnabled    = prefs.getBool("relayMode", false);
   deviceLocked    = prefs.getBool("locked", false);
+  meshScannerMode = prefs.getUChar("meshScanner", 0);
   if (loraRegionIdx >= LORA_REGION_COUNT) loraRegionIdx = 0;
   if (loraIntervalSec < LORA_MIN_INTERVAL_S) loraIntervalSec = LORA_MIN_INTERVAL_S;
   if (loraIntervalSec > LORA_MAX_INTERVAL_S) loraIntervalSec = LORA_MAX_INTERVAL_S;
+  if (meshScannerMode > 3) meshScannerMode = 0;
 #endif
   prefs.end();
   if (savedAp) apStart();
@@ -1775,6 +1821,7 @@ void saveSettings() {
 #if ENABLE_LORA
   prefs.putBool("relayMode",  relayEnabled);
   prefs.putBool("locked",     deviceLocked);
+  prefs.putUChar("meshScanner", meshScannerMode);
 #endif
   prefs.end();
   // Apply brightness — full=normal, dim=inverted display (more noticeable than contrast)
@@ -1873,6 +1920,65 @@ void storedGroupsLoad() {
   prefs.end();
   if (storedGroupCount > 0) {
     Serial.printf("[NVS] Loaded %d stored groups, active=%d\n", storedGroupCount, activeStoredGroup);
+  }
+}
+
+// ── Meshtastic custom channel NVS storage ─────────────────────────────────
+
+bool meshChannelsSavePending = false;  // Async flag for deferred NVS save
+
+void meshChannelsSave() {
+  MeshtasticChannel chans[SCANNER_MAX_CHANNELS];
+  int n = meshtasticGetChannels(chans, SCANNER_MAX_CHANNELS);
+  
+  prefs.begin("azimuth", false);
+  prefs.putInt("mchCount", n);
+  prefs.putBool("mchDefault", meshtasticIncludeDefaultChannel);
+  
+  for (int i = 0; i < n && i < SCANNER_MAX_CHANNELS; i++) {
+    char keyName[16], keyPsk[16], keyEnabled[16];
+    snprintf(keyName, sizeof(keyName), "mch%dName", i);
+    snprintf(keyPsk, sizeof(keyPsk), "mch%dPsk", i);
+    snprintf(keyEnabled, sizeof(keyEnabled), "mch%dEn", i);
+    prefs.putString(keyName, chans[i].name);
+    prefs.putString(keyPsk, chans[i].pskBase64);
+    prefs.putBool(keyEnabled, chans[i].enabled);
+  }
+  prefs.end();
+  Serial.printf("[NVS] Saved %d Meshtastic channels\n", n);
+}
+
+void meshChannelsLoad() {
+  prefs.begin("azimuth", true);
+  int count = prefs.getInt("mchCount", 0);
+  meshtasticIncludeDefaultChannel = prefs.getBool("mchDefault", true);
+  
+  if (count > SCANNER_MAX_CHANNELS) count = SCANNER_MAX_CHANNELS;
+  
+  for (int i = 0; i < count; i++) {
+    char keyName[16], keyPsk[16], keyEnabled[16];
+    char name[MESH_CHANNEL_NAME_LEN];
+    char psk[MESH_CHANNEL_KEY_LEN];
+    
+    snprintf(keyName, sizeof(keyName), "mch%dName", i);
+    snprintf(keyPsk, sizeof(keyPsk), "mch%dPsk", i);
+    snprintf(keyEnabled, sizeof(keyEnabled), "mch%dEn", i);
+    
+    prefs.getString(keyName, name, sizeof(name));
+    prefs.getString(keyPsk, psk, sizeof(psk));
+    bool enabled = prefs.getBool(keyEnabled, true);
+    
+    if (strlen(name) > 0 && strlen(psk) > 0) {
+      int idx = meshtasticAddChannel(name, psk);
+      if (idx >= 0 && !enabled) {
+        meshtasticSetChannelEnabled(idx, false);
+      }
+    }
+  }
+  prefs.end();
+  
+  if (count > 0) {
+    Serial.printf("[NVS] Loaded %d Meshtastic channels\n", count);
   }
 }
 
@@ -3431,18 +3537,23 @@ void saveWifi() {
 
 // Helper — build current settings JSON
 String buildSettingsJSON() {
-  char buf[160];
+  char buf[256];
+#ifdef BOARD_WIRELESS_TRACKER
+  const char* board = "tracker";
+#else
+  const char* board = "v3";
+#endif
 #if ENABLE_LORA
   snprintf(buf, sizeof(buf),
-    "{\"spd\":%d,\"elv\":%d,\"tmo\":%d,\"brt\":%d,\"loraRegion\":%d,\"loraInterval\":%d,\"logCount\":%d,\"rec\":%d}",
+    "{\"spd\":%d,\"elv\":%d,\"tmo\":%d,\"brt\":%d,\"loraRegion\":%d,\"loraInterval\":%d,\"logCount\":%d,\"rec\":%d,\"fw\":\"v3.19\",\"board\":\"%s\"}",
     setSpeedMph ? 1 : 0, setElevFt ? 1 : 0, setTimeoutIdx,
     setBrightFull ? 1 : 0, loraRegionIdx, loraIntervalSec,
-    routeLogCount, routeRecording ? 1 : 0);
+    routeLogCount, routeRecording ? 1 : 0, board);
 #else
   snprintf(buf, sizeof(buf),
-    "{\"spd\":%d,\"elv\":%d,\"tmo\":%d,\"brt\":%d,\"logCount\":%d,\"rec\":%d}",
+    "{\"spd\":%d,\"elv\":%d,\"tmo\":%d,\"brt\":%d,\"logCount\":%d,\"rec\":%d,\"fw\":\"v3.19\",\"board\":\"%s\"}",
     setSpeedMph ? 1 : 0, setElevFt ? 1 : 0, setTimeoutIdx, setBrightFull ? 1 : 0,
-    routeLogCount, routeRecording ? 1 : 0);
+    routeLogCount, routeRecording ? 1 : 0, board);
 #endif
   return String(buf);
 }
@@ -3492,7 +3603,12 @@ class SetCharCB : public NimBLECharacteristicCallbacks {
       bool correct = (submitted == String(expected));
       c->setValue(correct ? "{\"auth\":1}" : "{\"auth\":0}");
       c->notify();
-      if (correct) sessionAuthorised = true;
+      if (correct) {
+        sessionAuthorised = true;
+        pairingActive = false;
+        pairingPending = false;
+        currentPage = prePairingPage;
+      }
       Serial.printf("[BLE] PIN verify: %s\n", correct ? "OK" : "FAIL");
       return;
     } else if (val == "GETSET") {
@@ -3667,6 +3783,139 @@ class SetCharCB : public NimBLECharacteristicCallbacks {
       c->setValue(buf);
       c->notify();
       oledRedrawPending = true;
+      return;
+    } else if (val.find("SETSCANNER:") == 0) {
+      // Set scanner mode: SETSCANNER:0 (off), SETSCANNER:1 (meshtastic), SETSCANNER:3 (auto)
+      String payload = String(val.c_str()).substring(11);
+      int newMode = payload.toInt();
+      if (newMode >= 0 && newMode <= 3) {
+        uint8_t oldMode = meshScannerMode;
+        meshScannerMode = (uint8_t)newMode;
+        meshtasticScannerSetMode((MeshtasticScannerMode)meshScannerMode);
+        // Adjust currentPage if needed
+        if (oldMode == 0 && meshScannerMode > 0) currentPage++;
+        else if (oldMode > 0 && meshScannerMode == 0) currentPage--;
+        // Save to NVS
+        prefs.begin("azimuth", false);
+        prefs.putUChar("meshScanner", meshScannerMode);
+        prefs.end();
+        Serial.printf("[SCANNER] Mode set to %d via BLE\n", meshScannerMode);
+        // Return updated status
+        char buf[64];
+        snprintf(buf, sizeof(buf), "{\"scanner\":%d}", meshScannerMode);
+        c->setValue(buf);
+        c->notify();
+        oledRedrawPending = true;
+      }
+      return;
+    } else if (val == "GETSCANNER") {
+      // Return scanner status
+      char buf[64];
+      snprintf(buf, sizeof(buf), "{\"scanner\":%d}", meshScannerMode);
+      c->setValue(buf);
+      c->notify();
+      return;
+    } else if (val == "GETMESHCH") {
+      // Get all custom Meshtastic channels as JSON — use manual JSON to avoid stack overflow
+      MeshtasticChannel chans[SCANNER_MAX_CHANNELS];
+      int n = meshtasticGetChannels(chans, SCANNER_MAX_CHANNELS);
+      
+      // Build JSON manually with small buffer chunks
+      String json = "{\"defaultEnabled\":";
+      json += meshtasticIncludeDefaultChannel ? "true" : "false";
+      json += ",\"channels\":[";
+      
+      for (int i = 0; i < n; i++) {
+        if (i > 0) json += ",";
+        json += "{\"name\":\"";
+        json += chans[i].name;
+        json += "\",\"psk\":\"";
+        json += chans[i].pskBase64;
+        json += "\",\"enabled\":";
+        json += chans[i].enabled ? "true" : "false";
+        json += ",\"packets\":";
+        json += chans[i].packetCount;
+        json += "}";
+      }
+      json += "]}";
+      
+      pResChar->setValue((uint8_t*)json.c_str(), json.length());
+      Serial.printf("[BLE] GETMESHCH: %d channels\n", n);
+      return;
+    } else if (val.find("ADDMESHCH:") == 0) {
+      // Add channel: ADDMESHCH:name:psk
+      String data = String(val.c_str()).substring(10);
+      int sep = data.indexOf(':');
+      String resp;
+      if (sep > 0) {
+        String name = data.substring(0, sep);
+        String psk = data.substring(sep + 1);
+        int idx = meshtasticAddChannel(name.c_str(), psk.c_str());
+        if (idx >= 0) {
+          meshChannelsSavePending = true;  // Defer NVS save to loop()
+          resp = "{\"ok\":true,\"idx\":" + String(idx) + "}";
+        } else {
+          resp = "{\"ok\":false,\"error\":\"Failed\"}";
+        }
+      } else {
+        resp = "{\"ok\":false,\"error\":\"Invalid format\"}";
+      }
+      pResChar->setValue((uint8_t*)resp.c_str(), resp.length());
+      return;
+    } else if (val.find("DELMESHCH:") == 0) {
+      // Delete channel: DELMESHCH:idx
+      int idx = atoi(val.c_str() + 10);
+      String resp;
+      if (meshtasticRemoveChannel(idx)) {
+        meshChannelsSavePending = true;  // Defer NVS save to loop()
+        resp = "{\"ok\":true}";
+      } else {
+        resp = "{\"ok\":false,\"error\":\"Invalid index\"}";
+      }
+      pResChar->setValue((uint8_t*)resp.c_str(), resp.length());
+      return;
+    } else if (val.find("MESHCHDEF:") == 0) {
+      // Set default channel enabled: MESHCHDEF:0 or MESHCHDEF:1
+      meshtasticIncludeDefaultChannel = (val[10] == '1');
+      meshChannelsSavePending = true;  // Defer NVS save to loop()
+      String resp = "{\"ok\":true,\"default\":";
+      resp += meshtasticIncludeDefaultChannel ? "true" : "false";
+      resp += "}";
+      pResChar->setValue((uint8_t*)resp.c_str(), resp.length());
+      return;
+    } else if (val.find("MESHCHTOG:") == 0) {
+      // Toggle channel enabled: MESHCHTOG:idx:0 or MESHCHTOG:idx:1
+      int idx = atoi(val.c_str() + 10);
+      const char* colonPos = strchr(val.c_str() + 10, ':');
+      bool enabled = colonPos ? (*(colonPos + 1) == '1') : true;
+      String resp;
+      if (meshtasticSetChannelEnabled(idx, enabled)) {
+        meshChannelsSavePending = true;
+        resp = "{\"ok\":true}";
+      } else {
+        resp = "{\"ok\":false,\"error\":\"Invalid index\"}";
+      }
+      pResChar->setValue((uint8_t*)resp.c_str(), resp.length());
+      return;
+    } else if (val.find("MESHCHURL:") == 0) {
+      // Parse Meshtastic share URL: MESHCHURL:https://meshtastic.org/e/#...
+      String url = String(val.c_str()).substring(10);
+      char name[MESH_CHANNEL_NAME_LEN];
+      char psk[MESH_CHANNEL_KEY_LEN];
+      String resp;
+      
+      if (meshtasticParseShareUrl(url.c_str(), name, sizeof(name), psk, sizeof(psk))) {
+        int idx = meshtasticAddChannel(name, psk);
+        if (idx >= 0) {
+          meshChannelsSavePending = true;  // Defer NVS save to loop()
+          resp = "{\"ok\":true,\"idx\":" + String(idx) + ",\"name\":\"" + String(name) + "\"}";
+        } else {
+          resp = "{\"ok\":false,\"error\":\"Failed\"}";
+        }
+      } else {
+        resp = "{\"ok\":false,\"error\":\"Invalid URL\"}";
+      }
+      pResChar->setValue((uint8_t*)resp.c_str(), resp.length());
       return;
 #endif // ENABLE_LORA
 #if ENABLE_LORA
@@ -4010,11 +4259,13 @@ class SecurityCB : public NimBLESecurityCallbacks {
 class BLEServerCB : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, ble_gap_conn_desc* desc) override {
     bleConnected = true;
-    // Check if this is an unbound device — keep PIN visible
+    // Check if this is an unbound device — show PIN screen automatically
     if (!desc->sec_state.bonded) {
       pairingPending = true;
+      pairingActive = true;
+      prePairingPage = currentPage;  // Save current page to return to
       blePushLogPending = false;  // wait until bonded before pushing data
-      Serial.printf("[BLE] Unbound device connected — PIN: %06lu\n", pairingPin);
+      Serial.printf("[BLE] Unbound device connected — showing PIN: %06lu\n", pairingPin);
     } else {
       pairingPending = false;
       blePushLogPending = true;  // bonded — safe to push
@@ -4033,8 +4284,9 @@ class BLEServerCB : public NimBLEServerCallbacks {
     bleConnected      = false;
     clientSubscribed  = false;
     blePushLogPending = false;
-    pairingPending     = false;
-    sessionAuthorised  = false;  // require re-auth on next connect
+    pairingPending    = false;
+    pairingActive     = false;
+    sessionAuthorised = false;  // require re-auth on next connect
     NimBLEDevice::startAdvertising();
     Serial.println("[BLE] Disconnected — advertising restarted");
   }
@@ -4650,9 +4902,9 @@ void apiHandleState() {
   // Settings
   snprintf(buf, sizeof(buf),
     "\"settings\":{\"spd\":%d,\"elv\":%d,\"tmo\":%d,\"brt\":%d,"
-    "\"loraRegion\":%d,\"loraInterval\":%d},",
+    "\"loraRegion\":%d,\"loraInterval\":%d,\"scanner\":%d},",
     setSpeedMph ? 1 : 0, setElevFt ? 1 : 0, setTimeoutIdx, setBrightFull ? 1 : 0,
-    loraRegionIdx, loraIntervalSec);
+    loraRegionIdx, loraIntervalSec, meshScannerMode);
   resp += buf;
 
   resp += "\"peers\":";   resp += peersJson; resp += ",";
@@ -4726,6 +4978,109 @@ void apiHandleCmd() {
       if (interval >= LORA_MIN_INTERVAL_S && interval <= LORA_MAX_INTERVAL_S) loraIntervalSec = interval;
       saveSettings();
     }
+  } else if (body.startsWith("SETSCANNER:")) {
+    // SETSCANNER:mode (0=off, 1=meshtastic, 3=auto)
+    String rest = body.substring(11);
+    int newMode = rest.toInt();
+    if (newMode >= 0 && newMode <= 3) {
+      uint8_t oldMode = meshScannerMode;
+      meshScannerMode = (uint8_t)newMode;
+      meshtasticScannerSetMode((MeshtasticScannerMode)meshScannerMode);
+      // Adjust currentPage if needed
+      if (oldMode == 0 && meshScannerMode > 0) currentPage++;
+      else if (oldMode > 0 && meshScannerMode == 0) currentPage--;
+      saveSettings();
+      oledDraw();
+      Serial.printf("[SCANNER] Mode set to %d via WiFi\n", meshScannerMode);
+    }
+  } else if (body == "GETMESHCH") {
+    // Get all custom Meshtastic channels as JSON
+    MeshtasticChannel chans[SCANNER_MAX_CHANNELS];
+    int n = meshtasticGetChannels(chans, SCANNER_MAX_CHANNELS);
+    
+    StaticJsonDocument<1024> doc;
+    doc["defaultEnabled"] = meshtasticIncludeDefaultChannel;
+    JsonArray arr = doc.createNestedArray("channels");
+    
+    for (int i = 0; i < n; i++) {
+      JsonObject ch = arr.createNestedObject();
+      ch["idx"] = i;
+      ch["name"] = chans[i].name;
+      ch["psk"] = chans[i].pskBase64;
+      ch["enabled"] = chans[i].enabled;
+      ch["packets"] = chans[i].packetCount;
+    }
+    
+    String json;
+    serializeJson(doc, json);
+    webServer.send(200, "application/json", json);
+    return;
+  } else if (body.startsWith("ADDMESHCH:")) {
+    // Add channel: ADDMESHCH:name:psk
+    String data = body.substring(10);
+    int sep = data.indexOf(':');
+    if (sep > 0) {
+      String name = data.substring(0, sep);
+      String psk = data.substring(sep + 1);
+      int idx = meshtasticAddChannel(name.c_str(), psk.c_str());
+      if (idx >= 0) {
+        meshChannelsSave();
+        webServer.send(200, "application/json", "{\"ok\":true,\"idx\":" + String(idx) + "}");
+      } else {
+        webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Failed to add channel\"}");
+      }
+    } else {
+      webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid format\"}");
+    }
+    return;
+  } else if (body.startsWith("DELMESHCH:")) {
+    // Delete channel: DELMESHCH:idx
+    int idx = body.substring(10).toInt();
+    if (meshtasticRemoveChannel(idx)) {
+      meshChannelsSave();
+      webServer.send(200, "application/json", "{\"ok\":true}");
+    } else {
+      webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid index\"}");
+    }
+    return;
+  } else if (body.startsWith("MESHCHDEF:")) {
+    // Set default channel enabled: MESHCHDEF:0 or MESHCHDEF:1
+    meshtasticIncludeDefaultChannel = (body.charAt(10) == '1');
+    meshChannelsSave();
+    webServer.send(200, "application/json", 
+      "{\"ok\":true,\"default\":" + String(meshtasticIncludeDefaultChannel ? "true" : "false") + "}");
+    return;
+  } else if (body.startsWith("MESHCHTOG:")) {
+    // Toggle channel enabled: MESHCHTOG:idx:0 or MESHCHTOG:idx:1
+    int colonPos = body.indexOf(':', 10);
+    int idx = body.substring(10, colonPos > 0 ? colonPos : body.length()).toInt();
+    bool enabled = colonPos > 0 ? (body.charAt(colonPos + 1) == '1') : true;
+    if (meshtasticSetChannelEnabled(idx, enabled)) {
+      meshChannelsSave();
+      webServer.send(200, "application/json", "{\"ok\":true}");
+    } else {
+      webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid index\"}");
+    }
+    return;
+  } else if (body.startsWith("MESHCHURL:")) {
+    // Parse Meshtastic share URL: MESHCHURL:https://meshtastic.org/e/#...
+    String url = body.substring(10);
+    char name[MESH_CHANNEL_NAME_LEN];
+    char psk[MESH_CHANNEL_KEY_LEN];
+    
+    if (meshtasticParseShareUrl(url.c_str(), name, sizeof(name), psk, sizeof(psk))) {
+      int idx = meshtasticAddChannel(name, psk);
+      if (idx >= 0) {
+        meshChannelsSave();
+        String resp = "{\"ok\":true,\"idx\":" + String(idx) + ",\"name\":\"" + String(name) + "\"}";
+        webServer.send(200, "application/json", resp);
+      } else {
+        webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Failed to add channel\"}");
+      }
+    } else {
+      webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid URL format\"}");
+    }
+    return;
   } else if (body.startsWith("SETSET:")) {
     // SETSET:spd:elv:tmo:brt
     String rest = body.substring(7);
@@ -5785,6 +6140,31 @@ void apStart() {
     webServer.sendHeader("Access-Control-Allow-Origin", "*");
     webServer.send(200, "application/json", buildGroupsJSON());
   });
+  // External peers from Meshtastic scanner
+  webServer.on("/api/external", HTTP_GET,  [](){
+    webServer.sendHeader("Access-Control-Allow-Origin", "*");
+#if ENABLE_LORA
+    String json = "[";
+    if (meshScannerMode > 0) {
+      MeshtasticPeer peers[SCANNER_MAX_PEERS];
+      int n = meshtasticGetPeers(peers, SCANNER_MAX_PEERS);
+      for (int i = 0; i < n; i++) {
+        if (i > 0) json += ",";
+        const char* srcStr = (peers[i].source == PEER_SOURCE_MESHCORE) ? "meshcore" : "meshtastic";
+        char buf[160];
+        snprintf(buf, sizeof(buf),
+          "{\"id\":\"%s\",\"src\":\"%s\",\"lat\":%.6f,\"lon\":%.6f,\"alt\":%.0f,\"rssi\":%d,\"snr\":%d,\"age\":%lu}",
+          peers[i].shortName, srcStr, peers[i].lat, peers[i].lon, peers[i].alt,
+          peers[i].rssi, peers[i].snr, (millis() - peers[i].lastSeenMs) / 1000);
+        json += buf;
+      }
+    }
+    json += "]";
+    webServer.send(200, "application/json", json);
+#else
+    webServer.send(200, "application/json", "[]");
+#endif
+  });
   // Status page (standalone HTML, no PWA required)
   webServer.on("/status", HTTP_GET, handleStatusPage);
   // Config portal (full device setup via browser)
@@ -6126,7 +6506,7 @@ void showSplashTitle() {
   }
   
   // Hold mountains
-  delay(900);
+  delay(500);
   
   // Phase 2: AZIMUTH + version drop in from top, over the mountains
   const int textY = 18;
@@ -6175,7 +6555,7 @@ void showSplashTitle() {
   }
   
   // Hold final frame
-  delay(2500);
+  delay(1200);
   display.setTextSize(1);
 #endif
 }
@@ -6775,17 +7155,139 @@ void drawPageNavigate() {
     display.setCursor(1,33); display.println(buf);
   }
 
-  // Bottom rule + hint
-  display.drawLine(0,50,61,50,SSD1306_WHITE);
+  // Bottom rule + hint (moved up to avoid nav dot overlap)
+  display.drawLine(0,44,61,44,SSD1306_WHITE);
   if (isWaypoint) {
-    snprintf(buf,sizeof(buf),"%d/%d Hold:next",waypointCurrent+1,waypointCount);
-    display.setCursor(1,54); display.println(buf);
+    snprintf(buf,sizeof(buf),"%d/%d Hld:nxt",waypointCurrent+1,waypointCount);
+    display.setCursor(1,46); display.println(buf);
   } else {
-    display.setCursor(1,54); display.println("Hold:clear");
+    display.setCursor(1,46); display.println("Hld:clr");
+  }
+  
+  // Nav dots in left panel
+  {
+    int total = pageCount();
+    const int dotW = 3, gap = 2;
+    int rowW = total * (dotW + gap) - gap;
+    int startX = (61 - rowW) / 2;  // Center in left panel (0-61)
+    int y = SCREEN_H - 5;
+    for (int i = 0; i < total; i++) {
+      int x = startX + i * (dotW + gap);
+      if (x + dotW > 61) break;  // Stay in left panel
+      if (i == currentPage) display.fillRect(x, y, dotW, dotW, SSD1306_WHITE);
+      else                  display.drawRect(x, y, dotW, dotW, SSD1306_WHITE);
+    }
   }
 }
 
 #if ENABLE_LORA
+// ══════════════════════════════════════════════════════════════
+// EXTERNAL PEERS PAGE — Meshtastic scanner results
+// ══════════════════════════════════════════════════════════════
+void drawPageExternal() {
+  displayClear();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  
+  // Header with scanner icon
+  display.drawBitmap(2, 1, ICON_SCAN, 8, 8, SSD1306_WHITE);
+  display.setCursor(13, 1);
+  
+  int extCount = meshtasticGetPeerCount();
+  if (meshtasticScannerIsActive()) {
+    display.println("Scanning...");
+  } else {
+    char hdr[20];
+    snprintf(hdr, sizeof(hdr), "Scanner (%d)", extCount);
+    display.println(hdr);
+  }
+  display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
+  
+  if (extCount == 0) {
+    // No external peers — show status (positioned just below header line)
+    display.setCursor(8, 14);
+    if (meshScannerMode == 0) {
+      display.println("Scanner disabled");
+      display.setCursor(8, 26);
+      display.println("Enable in Settings");
+    } else {
+      display.println("No peers detected");
+      display.setCursor(8, 26);
+      display.println("Listening...");
+      // Show last scan time
+      const MeshtasticStats& stats = meshtasticGetStats();
+      if (stats.scanCount > 0) {
+        uint32_t ago = (millis() - stats.lastScanMs) / 1000;
+        char buf[24];
+        snprintf(buf, sizeof(buf), "Last scan: %lus ago", ago);
+        display.setCursor(8, 38);
+        display.println(buf);
+      }
+    }
+    return;
+  }
+  
+  // Get peers and display up to 4
+  MeshtasticPeer peers[SCANNER_MAX_PEERS];
+  int n = meshtasticGetPeers(peers, SCANNER_MAX_PEERS);
+  
+  // Scroll through peers if more than 4
+  static int extScroll = 0;
+  if (extScroll >= n) extScroll = 0;
+  
+  int y = 13;
+  for (int i = extScroll; i < n && i < extScroll + 4; i++) {
+    // Calculate distance if we have GPS fix
+    float distKm = 0;
+    if (cachedFix && peers[i].lat != 0) {
+      distKm = haversineDistance(cachedLat, cachedLon, peers[i].lat, peers[i].lon) / 1000.0f;
+    }
+    
+    // Format: [M] or [C] + nodeId + distance
+    char line[28];
+    char distStr[10] = "";
+    if (distKm > 0) {
+      if (setSpeedMph) {
+        float distMi = distKm * 0.621371f;
+        if (distMi < 10) snprintf(distStr, sizeof(distStr), "%.1fmi", distMi);
+        else snprintf(distStr, sizeof(distStr), "%.0fmi", distMi);
+      } else {
+        if (distKm < 10) snprintf(distStr, sizeof(distStr), "%.1fkm", distKm);
+        else snprintf(distStr, sizeof(distStr), "%.0fkm", distKm);
+      }
+    }
+    
+    // Shorten node ID for display (show last 8 chars)
+    const char* nodeId = peers[i].shortName;
+    if (strlen(nodeId) > 9) nodeId = nodeId + strlen(nodeId) - 9;
+    
+    // Badge based on source: [M] for Meshtastic, [C] for MeshCore
+    const char* badge = (peers[i].source == PEER_SOURCE_MESHCORE) ? "[C]" : "[M]";
+    snprintf(line, sizeof(line), "%s%s %s", badge, nodeId, distStr);
+    
+    display.setCursor(2, y);
+    display.println(line);
+    
+    // Age indicator on right
+    uint32_t ageS = (millis() - peers[i].lastSeenMs) / 1000;
+    char age[8];
+    if (ageS < 60) snprintf(age, sizeof(age), "%lus", ageS);
+    else snprintf(age, sizeof(age), "%lum", ageS / 60);
+    int aw = strlen(age) * 6;
+    display.setCursor(SCREEN_MAX_X - aw, y);
+    display.print(age);
+    
+    y += 12;
+  }
+  
+  // Scroll indicator if more peers
+  if (n > 4) {
+    int ax = 122, ay = 57;
+    display.drawLine(ax, ay, ax-4, ay-4, SSD1306_WHITE);
+    display.drawLine(ax, ay, ax+4, ay-4, SSD1306_WHITE);
+  }
+}
+
 void drawPageGroups() {
   display.setTextSize(1);
   
@@ -7136,7 +7638,7 @@ void drawPageRoute() {
   if (!cachedFix) { display.setCursor(2, 34); display.println("Waiting for fix..."); }
 
   display.drawLine(0, 45, SCREEN_MAX_X, 45,SSD1306_WHITE);
-  display.setCursor(2, 49);
+  display.setCursor(2, 47);
   if (routeRecording)        display.println("Dbl:stop  Hold:clear");
   else if (routeCount>0)     display.println("Dbl:start Hold:clear");
   else                       display.println("Dbl:start");
@@ -7452,17 +7954,15 @@ void drawPairingScreen() {
   display.setCursor(2, 1); display.println("Pair Device");
   display.drawLine(0, HEADER_LINE_Y, SCREEN_MAX_X, HEADER_LINE_Y, SSD1306_WHITE);
 
-  // Instruction
-  display.setCursor(2, 14); display.println("Enter this PIN");
-  display.setCursor(2, 24); display.println("in your browser:");
+  // Instruction - single line
+  display.setCursor(2, 16); display.println("Enter this PIN:");
 
-  // PIN — large, centred
+  // PIN — extra large, centred
   char pinStr[8];
   snprintf(pinStr, sizeof(pinStr), "%06lu", pairingPin);
-  // Draw each digit larger using size 2
-  display.setTextSize(2);
-  int pinW = 6 * 6 * 2;  // 6 digits * 6px * scale2
-  display.setCursor((128 - pinW) / 2, 36);
+  display.setTextSize(3);
+  int pinW = 6 * 6 * 3;  // 6 digits * 6px * scale3
+  display.setCursor((128 - pinW) / 2, 32);
   display.println(pinStr);
   display.setTextSize(1);
   displayFlush();
@@ -7649,11 +8149,11 @@ void drawPageSettings() {
     return;
   }
   
-  // Settings: 7 rows total with LoRa, 3 visible per page
-  // Page 0: rows 0-2, Page 1: rows 3-5, Page 2: row 6
+  // Settings: 8 rows total with LoRa, 3 visible per page
+  // Page 0: rows 0-2, Page 1: rows 3-5, Page 2: rows 6-7
   const int ROWS_PER_PAGE = 3;
 #if ENABLE_LORA
-  const int TOTAL_ROWS = 7;
+  const int TOTAL_ROWS = 8;
 #else
   const int TOTAL_ROWS = 6;
 #endif
@@ -7665,7 +8165,7 @@ void drawPageSettings() {
   display.drawBitmap(2, 1, ICON_COG, 8, 8, SSD1306_WHITE);
   if (settingsSel) {
 #if ENABLE_LORA
-    const char* rowNames[7] = {"Speed", "Elevation", "Timeout", "Theme", "Hotspot", "Relay", "Lock"};
+    const char* rowNames[8] = {"Speed", "Elevation", "Timeout", "Theme", "Hotspot", "Relay", "Scanner", "Lock"};
 #else
     const char* rowNames[6] = {"Speed", "Elevation", "Timeout", "Theme", "Hotspot", "Lock"};
 #endif
@@ -7679,8 +8179,8 @@ void drawPageSettings() {
 
   // Row labels and values
 #if ENABLE_LORA
-  const char* rows[7] = {"Speed", "Elevation", "Timeout", "Theme", "Hotspot", "Relay", "Lock"};
-  char vals[7][10];
+  const char* rows[8] = {"Speed", "Elevation", "Timeout", "Theme", "Hotspot", "Relay", "Scanner", "Lock"};
+  char vals[8][10];
 #else
   const char* rows[6] = {"Speed", "Elevation", "Timeout", "Theme", "Hotspot", "Lock"};
   char vals[6][10];
@@ -7694,7 +8194,10 @@ void drawPageSettings() {
   snprintf(vals[4], 10, "%s", apEnabled     ? "On"    : "Off");
 #if ENABLE_LORA
   snprintf(vals[5], 10, "%s", relayEnabled  ? "On"    : "Off");
-  snprintf(vals[6], 10, "%s", deviceLocked  ? "On"    : "Off");
+  snprintf(vals[6], 10, "%s", meshScannerMode == 0 ? "Off" : 
+                              meshScannerMode == 1 ? "Mesh" : 
+                              meshScannerMode == 2 ? "Core" : "Auto");
+  snprintf(vals[7], 10, "%s", deviceLocked  ? "On"    : "Off");
 #else
   snprintf(vals[5], 10, "%s", deviceLocked  ? "On"    : "Off");
 #endif
@@ -7891,6 +8394,7 @@ void oledDrawPage() {
 #if ENABLE_LORA
   else if (loraMsgCount>0 && currentPage==pageMessages())  drawPageMessages();
   else if (currentPage==pageGroups())         drawPageGroups();
+  else if (meshScannerMode>0 && currentPage==pageExternal()) drawPageExternal();
 #endif
   else if (currentPage==pageCompass())        drawPageCompass();
   else if (currentPage==pageTrack())          drawPageRoute();
@@ -7912,9 +8416,10 @@ void oledDrawPage() {
   else if (currentPage==pagePower())          drawPagePower();
   else                                        drawPageGPS();
 
-  // Nav dots — suppressed on compass and settings saved
+  // Nav dots — suppressed on compass, waypoint (has own dots), and settings saved
   bool isCompass = (currentPage == pageCompass());
-  if (!isCompass && !settingsSaved && !weatherDetailActive)
+  bool isWaypoint = (currentPage == pageWaypoint());
+  if (!isCompass && !isWaypoint && !settingsSaved && !weatherDetailActive)
     drawNavDots();
 }
 
@@ -8170,9 +8675,9 @@ void handleButton() {
         } else {
           // Confirm row — advance to next, or save+exit on last row
 #if ENABLE_LORA
-          const int lastRow = 5;
+          const int lastRow = 7;  // 0-7: Speed,Elev,Timeout,Theme,Hotspot,Relay,Scanner,Lock
 #else
-          const int lastRow = 4;
+          const int lastRow = 5;  // 0-5: Speed,Elev,Timeout,Theme,Hotspot,Lock
 #endif
           if (settingsRow < lastRow) {
             settingsRow++;
@@ -8289,7 +8794,24 @@ void handleButton() {
                   relayEnabled = !relayEnabled;
                   Serial.printf("[RELAY] %s\n", relayEnabled ? "Enabled" : "Disabled");
                   break;
-          case 6: // Lock mode toggle
+          case 6: // Scanner mode cycle (Off -> Meshtastic -> MeshCore -> Auto -> Off)
+                  {
+                  // Cycle: 0 (Off) -> 1 (Meshtastic) -> 2 (MeshCore) -> 3 (Auto) -> 0 (Off)
+                  uint8_t oldMode = meshScannerMode;
+                  if (meshScannerMode == 0) meshScannerMode = 1;       // Off -> Meshtastic
+                  else if (meshScannerMode == 1) meshScannerMode = 2;  // Meshtastic -> MeshCore
+                  else if (meshScannerMode == 2) meshScannerMode = 3;  // MeshCore -> Auto
+                  else meshScannerMode = 0;                             // Auto -> Off
+                  meshtasticScannerSetMode((MeshtasticScannerMode)meshScannerMode);
+                  // Adjust currentPage to compensate for page count change
+                  // When enabling (0->1 or 0->2 or 0->3): pages after External shift up, so increment currentPage
+                  // When disabling (1->0 or 2->0 or 3->0): pages shift down, so decrement currentPage
+                  if (oldMode == 0 && meshScannerMode > 0) currentPage++;
+                  else if (oldMode > 0 && meshScannerMode == 0) currentPage--;
+                  Serial.printf("[SCANNER] Mode=%d\n", meshScannerMode);
+                  }
+                  break;
+          case 7: // Lock mode toggle
                   deviceLocked = !deviceLocked;
                   Serial.printf("[LOCK] %s\n", deviceLocked ? "Locked" : "Unlocked");
                   break;
@@ -8541,12 +9063,41 @@ void setup() {
   while (gpsSerial.available()) gpsSerial.read();  // flush startup chars
   Serial.printf("[GPS] UART RX=%d TX=%d Baud=%d\n", GPS_RX_PIN, GPS_TX_PIN, GPS_BAUD);
 
-  // Send hot start if we have a last known position, otherwise warm start
+  // Enable all constellations for fastest fix (GPS=1 + BDS=2 + GLONASS=4 = 7)
+  // This maximizes satellite visibility, especially in challenging environments
+  // SBAS (WAAS/EGNOS) is automatically enabled when base constellations are active
+  gpsSerial.print("$PCAS04,7*1E\r\n");
+  Serial.println("[GPS] All constellations enabled (GPS+BDS+GLONASS)");
+  delay(50);
+
+  // Send hot start with position hint if we have a last known position
   if (lastKnownLat != 0.0) {
-    // Provide last known position hint for faster acquisition
+    // Inject last known position for faster acquisition (PCAS11)
     // Format: $PCAS11,lat,N/S,lon,E/W,alt,DDMMYY,HHMMSS.SS*checksum
-    // Simpler: just send hot start command — module uses its own NV memory
-    gpsSerial.print("$PCAS10,0*1C\r\n");  // hot start
+    char posCmd[100];
+    char latDir = (lastKnownLat >= 0) ? 'N' : 'S';
+    char lonDir = (lastKnownLon >= 0) ? 'E' : 'W';
+    double absLat = fabs(lastKnownLat);
+    double absLon = fabs(lastKnownLon);
+    // Convert decimal degrees to NMEA format (DDMM.MMMM)
+    int latDeg = (int)absLat;
+    double latMin = (absLat - latDeg) * 60.0;
+    int lonDeg = (int)absLon;
+    double lonMin = (absLon - lonDeg) * 60.0;
+    // Build command without checksum first
+    snprintf(posCmd, sizeof(posCmd), "PCAS11,%02d%07.4f,%c,%03d%07.4f,%c,%.0f,,",
+             latDeg, latMin, latDir, lonDeg, lonMin, lonDir, lastKnownAlt);
+    // Calculate NMEA checksum (XOR of all chars between $ and *)
+    uint8_t cksum = 0;
+    for (int i = 0; posCmd[i]; i++) cksum ^= posCmd[i];
+    char fullCmd[120];
+    snprintf(fullCmd, sizeof(fullCmd), "$%s*%02X\r\n", posCmd, cksum);
+    gpsSerial.print(fullCmd);
+    Serial.printf("[GPS] Position hint: %.4f,%c %.4f,%c alt=%.0f\n", 
+                  absLat, latDir, absLon, lonDir, lastKnownAlt);
+    delay(50);
+    // Hot start — use injected position + internal NV memory
+    gpsSerial.print("$PCAS10,0*1C\r\n");
     Serial.println("[GPS] Hot start sent");
   } else {
     gpsSerial.print("$PCAS10,1*1D\r\n");  // warm start
@@ -8670,6 +9221,17 @@ void setup() {
   Serial.flush();
   if (loraBegin()) {
     Serial.println("[LORA] Peer sharing active");
+    // Set Azimuth LoRa config for scanner to save/restore
+    const LoRaRegionPreset& p = LORA_REGIONS[loraRegionIdx];
+    azimuthLoraFreq = p.freqMHz;
+    azimuthLoraBW   = p.bwKHz;
+    azimuthLoraSF   = p.sf;
+    azimuthLoraCR   = p.cr;
+    azimuthLoraPwr  = p.power;
+    // Initialize Meshtastic scanner
+    meshtasticScannerInit();
+    meshChannelsLoad();  // Load custom Meshtastic channels from NVS
+    meshtasticScannerSetMode((MeshtasticScannerMode)meshScannerMode);
   } else {
     Serial.println("[LORA] LoRa unavailable — GPS/BLE still operational");
   }
@@ -8692,6 +9254,12 @@ void setup() {
 // ============================================================
 void loop() {
   uint32_t now = millis();
+
+  // Deferred mesh channel NVS save (from BLE callback)
+  if (meshChannelsSavePending) {
+    meshChannelsSavePending = false;
+    meshChannelsSave();
+  }
 
   // GPS
 #ifdef SIMULATE_GPS
@@ -9019,10 +9587,43 @@ void loop() {
     String json = buildJSON();
     pGpsChar->setValue((uint8_t*)json.c_str(), json.length());
     pGpsChar->notify();
+    
+    // Notify external peers from Meshtastic scanner (every 5s to reduce traffic)
+#if ENABLE_LORA
+    static uint32_t lastExtNotify = 0;
+    if (meshScannerMode > 0 && pPeerChar && (now - lastExtNotify >= 5000)) {
+      lastExtNotify = now;
+      int extCount = meshtasticGetPeerCount();
+      if (extCount > 0) {
+        MeshtasticPeer extPeers[SCANNER_MAX_PEERS];
+        int n = meshtasticGetPeers(extPeers, SCANNER_MAX_PEERS);
+        String extJson = "{\"ext\":[";
+        for (int i = 0; i < n; i++) {
+          if (i > 0) extJson += ",";
+          const char* srcStr = (extPeers[i].source == PEER_SOURCE_MESHCORE) ? "meshcore" : "meshtastic";
+          char buf[140];
+          snprintf(buf, sizeof(buf),
+            "{\"id\":\"%s\",\"src\":\"%s\",\"lat\":%.6f,\"lon\":%.6f,\"alt\":%.0f,\"rssi\":%d,\"snr\":%d,\"age\":%lu}",
+            extPeers[i].shortName, srcStr, extPeers[i].lat, extPeers[i].lon, extPeers[i].alt,
+            extPeers[i].rssi, extPeers[i].snr, (millis() - extPeers[i].lastSeenMs) / 1000);
+          extJson += buf;
+        }
+        extJson += "]}";
+        pPeerChar->setValue((uint8_t*)extJson.c_str(), extJson.length());
+        pPeerChar->notify();
+      }
+    }
+#endif
   }
 
   // ── LoRa TX/RX ───────────────────────────────────────────────────────────
 #if ENABLE_LORA
+  // Meshtastic Scanner — run state machine
+  meshtasticScannerLoop();
+  
+  // Skip Azimuth LoRa TX/RX while scanner is active (radio config is different)
+  if (!meshtasticScannerIsActive()) {
+  
   if (loraReady && radio &&
       (now - lastLoraTxMs >= (uint32_t)loraIntervalSec * 1000UL)) {
     lastLoraTxMs = now;
@@ -9131,6 +9732,8 @@ void loop() {
     lastPeerExpiry = now;
     loraExpirePeers();
   }
+  
+  } // End of !meshtasticScannerIsActive() block
 #endif // ENABLE_LORA
 
   // ── AP web server ────────────────────────────────────────────────────────
